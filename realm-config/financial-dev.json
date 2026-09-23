@@ -1,0 +1,146 @@
+{
+  "realm": "financial-dev",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": false,
+  "eventsEnabled": false,
+  "eventsListeners": ["jboss-logging"],
+  "adminEventsEnabled": false,
+  "adminEventsDetailsEnabled": false,
+  "internationalizationEnabled": false,
+  "webAuthnPolicyReuseRecaptchaToken": false,
+  "browserSecurityHeaders": {
+    "contentSecurityPolicyReportOnly": "",
+    "xContentTypeOptions": "nosniff",
+    "xRobotsTag": "none",
+    "xFrameOptions": "SAMEORIGIN",
+    "contentSecurityPolicy": "frame-src 'self'; frame-ancestors 'self'; object-src 'none';",
+    "xXSSProtection": "1; mode=block",
+    "strictTransportSecurity": "max-age=31536000; includeSubDomains"
+  },
+  "access": {
+    "tokenExchange": {
+      "enabled": false
+    }
+  },
+  "users": [],
+  "clients": [
+    {
+      "clientId": "financial-client",
+      "name": "Financial System Client",
+      "description": "OIDC client for Financial System",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "financial-client-secret-change-in-production",
+      "redirectUris": [
+        "http://localhost:3001/*",
+        "http://localhost:3001/auth/callback*"
+      ],
+      "webOrigins": [
+        "http://localhost:3001"
+      ],
+      "adminUrl": "",
+      "rootUrl": "http://localhost:3001",
+      "baseUrl": "/",
+      "bearerOnly": false,
+      "consentRequired": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "publicClient": false,
+      "frontchannelLogout": false,
+      "attributes": {
+        "access.token.lifespan": "3600",
+        "state.session.version": "3"
+      },
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "financial_role",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "financial_role",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "financial_role",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "organization_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "organization_id",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "organization_id",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "is_staff",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "is_staff",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "is_staff",
+            "jsonType.label": "Boolean"
+          }
+        }
+      ]
+    }
+  ],
+  "clientScopes": [],
+  "roles": {
+    "realm": [
+      {
+        "name": "financial_admin",
+        "description": "Financial System Administrator"
+      },
+      {
+        "name": "financial_user",
+        "description": "Financial System User"
+      }
+    ],
+    "client": {}
+  },
+  "groups": [],
+  "defaultRoles": [],
+  "requiredCredentials": [],
+  "otpPolicyType": "totp",
+  "otpPolicyAlgorithm": "HmacSHA1",
+  "otpPolicyInitialCounter": 0,
+  "otpPolicyDigits": 6,
+  "otpPolicyLookAheadWindow": 1,
+  "otpPolicyPeriod": 30,
+  "otpPolicyCodeReusable": false,
+  "otpPolicyNumberOfScratchCodes": 10,
+  "browserFlow": "browser",
+  "registrationFlow": "registration",
+  "directGrantFlow": "direct grant",
+  "resetCredentialsFlow": "reset credentials",
+  "clientAuthenticationFlow": "clients",
+  "dockerAuthenticationFlow": "docker auth",
+  "attributes": {
+    "quickLoginInfoMessage": "false",
+    "clientSessionIdle": "1800",
+    "clientSessionMaxLifespan": "36000"
+  },
+  "keycloakVersion": "22.0.0"
+}
