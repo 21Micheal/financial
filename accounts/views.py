@@ -18,6 +18,7 @@ class LoginView(APIView):
     """
     Native login endpoint - validates credentials and initiates OTP flow
     """
+    authentication_classes = []
     permission_classes = [AllowAny]
     
     def post(self, request):
@@ -82,6 +83,7 @@ class VerifyOTPView(APIView):
     """
     Verify OTP and issue JWT tokens
     """
+    authentication_classes = []
     permission_classes = [AllowAny]
     
     def post(self, request):
@@ -183,4 +185,55 @@ class MeView(APIView):
             'organization_id': str(user.organization.id) if user.organization else None,
             'is_staff': user.is_staff,
             'is_superuser': user.is_superuser,
+        })
+
+
+class OIDCExchangeView(APIView):
+    """
+    SPA PKCE completed against Keycloak; exchange a validated id_token for hub JWTs.
+    """
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        import jwt as pyjwt
+        from rest_framework_simplejwt.tokens import RefreshToken
+        from .oidc_auth import resolve_financial_user, validate_id_token
+
+        raw_token = (request.data.get("id_token") or "").strip()
+        if not raw_token:
+            return Response({"detail": "id_token is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            claims = validate_id_token(raw_token)
+            user = resolve_financial_user(claims)
+        except pyjwt.ExpiredSignatureError:
+            return Response({"detail": "The token has expired. Please sign in again."}, status=status.HTTP_401_UNAUTHORIZED)
+        except pyjwt.PyJWTError:
+            return Response({"detail": "Invalid identity token."}, status=status.HTTP_401_UNAUTHORIZED)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        except Exception:
+            return Response({"detail": "Unable to complete sign-in."}, status=status.HTTP_401_UNAUTHORIZED)
+
+        if not user.is_active:
+            return Response({"detail": "Account is inactive"}, status=status.HTTP_403_FORBIDDEN)
+
+        user.last_login = timezone.now()
+        user.save(update_fields=["last_login"])
+        refresh = RefreshToken.for_user(user)
+        AuditLog.objects.create(event=AuditEvent.USER_LOGIN, actor=user, changes={"auth_mode": "keycloak"})
+        return Response({
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+            "user": {
+                "id": str(user.id),
+                "email": user.email,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "role": user.role,
+                "organization_id": str(user.organization.id) if user.organization else None,
+                "is_staff": user.is_staff,
+                "is_superuser": user.is_superuser,
+            },
         })

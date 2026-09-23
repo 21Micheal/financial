@@ -43,7 +43,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True)
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
-    role = models.CharField(max_length=50, default=Role.CLIENT_USER)
+    role = models.CharField(max_length=50, choices=Role.choices, default=Role.CLIENT_USER)
     
     # Platform admin flags (for break-glass access)
     is_staff = models.BooleanField(default=False)

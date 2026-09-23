@@ -19,7 +19,7 @@ The Financial System is the SSO/identity hub for a multi-system platform. It ser
    - System launcher with SSO redirects
    - Break-glass emergency access support
 
-3. **Keycloak Integration** (`~/Projects/idp`)
+3. **Keycloak Integration** (`~/Projects/SSO`)
    - User Storage SPI federates to financial system
    - Live-claim protocol mappers for role injection
    - OIDC client configuration
@@ -29,7 +29,6 @@ The Financial System is the SSO/identity hub for a multi-system platform. It ser
 - **User**: Platform users with roles and organization assignment
 - **ClientOrganization**: Client organizations that license systems
 - **SystemLicense**: System licenses per organization
-- **UserSystemRole**: User roles within specific systems
 - **AuditLog**: Immutable audit trail
 
 ## Deployment
@@ -56,25 +55,27 @@ docker-compose up -d db redis backend
 Services:
 - `db`: PostgreSQL (port 5433)
 - `redis`: Redis (port 6380)
-- `backend`: Django/Daphne (port 8001)
+- `financial-backend`: Django/Daphne (port 8001) on `idp-network`
 - `frontend`: React/Vite (port 3001)
 
 ## Keycloak Integration
 
 ### User Storage SPI
 
-The financial system provides an internal IDP API at `/internal/idp/` with endpoints:
+The financial system provides an internal IDP API at `/api/v1/internal/idp/`
+(`Authorization: Bearer <FINANCIAL_INTERNAL_IDP_API_KEY>`):
 
-- `GET /user/lookup/` - User lookup by email
-- `GET /user/search/` - User search
-- `POST /user/validate/` - Password validation
-- `POST /user/create/` - User creation (write-through)
-- `PUT /user/update/` - Profile/password update
-- `DELETE /user/delete/` - User deactivation
+- `GET /users/lookup/` — id, email, or username
+- `GET /users/search/` — q, first, max, count
+- `POST /users/validate-password/`
+- `POST /users/` — write-through create
+- `PATCH /users/{id}/` — profile
+- `PUT /users/{id}/password/`
+- `GET /users/{id}/authorization/` and `GET /users/authorization/?email=` — financial_role, permissions, organization_id, is_staff
 
 ### Configuration
 
-1. Set `FINANCIAL_INTERNAL_IDP_API_KEY` in both `financial-system/.env` and `idp/.env`
+1. Set `FINANCIAL_INTERNAL_IDP_API_KEY` in both `financial-system/.env` and `SSO/.env`
 2. Configure Keycloak realm with User Storage SPI pointing to financial system
 3. Add protocol mappers for `financial_role`, `organization_id`, `is_staff`
 
@@ -93,9 +94,9 @@ The financial system provides an internal IDP API at `/internal/idp/` with endpo
 
 ### Access States
 
-- **Licensed + Provisioned**: Access granted, SSO redirect
-- **Licensed + Not Provisioned**: Blocked with message "Contact your administrator"
-- **Not Licensed**: Blocked with message "Organization not licensed"
+- **Licensed + Provisioned**: Access granted; browser goes to the product origin (DMS `http://localhost:3000`)
+- **Licensed + Not Provisioned**: Card stays visible; click is a no-op with “not provisioned… Contact your administrator”
+- **Not Licensed**: System does not appear in the launcher
 
 ## Break-Glass Access
 
@@ -133,12 +134,8 @@ See `BREAK_GLASS_README.md` for complete documentation.
 
 ### Internal IDP API
 
-- `GET /internal/idp/user/lookup/` - User lookup
-- `GET /internal/idp/user/search/` - User search
-- `POST /internal/idp/user/validate/` - Password validation
-- `POST /internal/idp/user/create/` - User creation
-- `PUT /internal/idp/user/update/` - Profile update
-- `DELETE /internal/idp/user/delete/` - User deactivation
+Mounted at `/api/v1/internal/idp/` with bearer `FINANCIAL_INTERNAL_IDP_API_KEY`.
+See User Storage SPI section above.
 
 ## Development
 
@@ -181,12 +178,17 @@ All significant events are logged in the audit log:
 
 ## Migration from DMS
 
-The financial system is replacing DMS as the identity backend:
+The financial system is the identity backend. DMS (`version2`) is a Keycloak
+relying party with a role-only internal API.
 
-1. **Completed**: Financial system backend and frontend
-2. **Pending**: Keycloak SPI provider for financial system
-3. **Pending**: DMS internal IDP API simplification (role-only endpoint)
-4. **Pending**: Keycloak realm reconfiguration to use financial SPI
+On the work computer (Docker):
+
+1. `openssl rand -hex 32` → same `FINANCIAL_INTERNAL_IDP_API_KEY` in financial and SSO `.env`; a **different** secret for `DMS_INTERNAL_IDP_API_KEY` in SSO, IDM, and financial.
+2. `docker compose up --build` SSO, then financial, then IDM. Join `idp-network`.
+3. Rebuild Keycloak (`kc.sh build` via image build). Admin: disable DMS user-storage, add `financial-user-storage`, clear stale local users if lookup is wrong.
+4. Login `financial-client` at `:3001` → launcher → DMS card provisioned vs not → redirect to `:3000` with no extra prompt when provisioned.
+5. Break-glass: `http://localhost:8001/operations/console` as staff when `AUTH_MODE=keycloak`.
+6. IDM `AUTH_MODE=native` still uses the existing form and never talks to Keycloak.
 
 ## Security Considerations
 

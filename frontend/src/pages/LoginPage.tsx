@@ -1,84 +1,92 @@
-import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { configAPI, authAPI } from '../services/api'
-import { useAuthStore } from '../store/authStore'
-import './LoginPage.css'
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { configAPI, authAPI } from "../services/api";
+import { useAuthStore } from "../store/authStore";
+import { oidcLogin } from "../lib/oidcClient";
+import "./LoginPage.css";
 
 export default function LoginPage() {
-  const [authMode, setAuthMode] = useState<'keycloak' | 'native'>('native')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [otp, setOtp] = useState('')
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [step, setStep] = useState<'credentials' | 'otp'>('credentials')
-  const [userId, setUserId] = useState<string | null>(null)
+  const [authMode, setAuthMode] = useState<"keycloak" | "native">("native");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [otp, setOtp] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [step, setStep] = useState<"credentials" | "otp">("credentials");
+  const [userId, setUserId] = useState<string | null>(null);
 
-  const navigate = useNavigate()
-  const { setTokens, setUser } = useAuthStore()
+  const navigate = useNavigate();
+  const { setTokens, setUser } = useAuthStore();
 
   useEffect(() => {
     const fetchConfig = async () => {
       try {
-        const { data } = await configAPI.getConfig()
-        setAuthMode(data.auth_mode)
+        const { data } = await configAPI.getConfig();
+        setAuthMode(data.auth_mode);
       } catch (err) {
-        console.error('Failed to fetch config:', err)
+        console.error("Failed to fetch config:", err);
       }
-    }
-    fetchConfig()
-  }, [])
+    };
+    fetchConfig();
+  }, []);
 
-  const handleKeycloakLogin = () => {
-    // Redirect to Keycloak login
-    window.location.href = `${import.meta.env.VITE_KEYCLOAK_URL}/realms/idp-dev/protocol/openid-connect/auth?client_id=financial-client&redirect_uri=${encodeURIComponent(window.location.origin + '/auth/callback')}&response_type=code&scope=openid`
-  }
+  const handleKeycloakLogin = async () => {
+    setError("");
+    setLoading(true);
+    try {
+      await oidcLogin();
+    } catch {
+      setError("Could not reach the identity provider. Please try again.");
+      setLoading(false);
+    }
+  };
 
   const handleNativeLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError('')
-    setLoading(true)
+    e.preventDefault();
+    setError("");
+    setLoading(true);
 
     try {
-      const { data } = await authAPI.login(email, password)
-      setUserId(data.user_id)
-      setStep('otp')
+      const { data } = await authAPI.login(email, password);
+      setUserId(data.user_id);
+      setStep("otp");
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Login failed')
+      setError(err.response?.data?.detail || "Login failed");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const handleOTPVerification = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError('')
-    setLoading(true)
+    e.preventDefault();
+    setError("");
+    setLoading(true);
 
     try {
-      const { data } = await authAPI.verifyOTP(userId!, otp)
-      setTokens(data.access, data.refresh)
-      setUser(data.user)
-      navigate('/launcher')
+      const { data } = await authAPI.verifyOTP(userId!, otp);
+      setTokens(data.access, data.refresh);
+      setUser(data.user);
+      navigate("/launcher");
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'OTP verification failed')
+      setError(err.response?.data?.detail || "OTP verification failed");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
-  if (authMode === 'keycloak') {
+  if (authMode === "keycloak") {
     return (
       <div className="login-page">
         <div className="login-container">
           <h1>Financial System</h1>
           <p>Sign in to access your organization's systems</p>
-          <button onClick={handleKeycloakLogin} className="keycloak-button">
-            Sign in with Keycloak
+          {error && <div className="error-message">{error}</div>}
+          <button onClick={handleKeycloakLogin} className="keycloak-button" disabled={loading}>
+            {loading ? "Redirecting…" : "Sign in with Keycloak"}
           </button>
         </div>
       </div>
-    )
+    );
   }
 
   return (
@@ -89,7 +97,7 @@ export default function LoginPage() {
 
         {error && <div className="error-message">{error}</div>}
 
-        {step === 'credentials' ? (
+        {step === "credentials" ? (
           <form onSubmit={handleNativeLogin}>
             <div className="form-group">
               <label htmlFor="email">Email</label>
@@ -112,7 +120,7 @@ export default function LoginPage() {
               />
             </div>
             <button type="submit" disabled={loading}>
-              {loading ? 'Sending...' : 'Request OTP'}
+              {loading ? "Sending..." : "Request OTP"}
             </button>
           </form>
         ) : (
@@ -130,11 +138,11 @@ export default function LoginPage() {
               />
             </div>
             <button type="submit" disabled={loading}>
-              {loading ? 'Verifying...' : 'Verify & Login'}
+              {loading ? "Verifying..." : "Verify & Login"}
             </button>
             <button
               type="button"
-              onClick={() => setStep('credentials')}
+              onClick={() => setStep("credentials")}
               className="back-button"
             >
               Back
@@ -143,5 +151,5 @@ export default function LoginPage() {
         )}
       </div>
     </div>
-  )
+  );
 }

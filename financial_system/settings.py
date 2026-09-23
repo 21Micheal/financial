@@ -4,6 +4,7 @@ Reads environment via django-environ. Copy .env.example → .env and adjust.
 """
 from pathlib import Path
 from datetime import timedelta
+import sys
 import environ
 import dj_database_url
 
@@ -12,7 +13,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 env = environ.Env(DEBUG=(bool, False))
 environ.Env.read_env(BASE_DIR / ".env")
 
-SECRET_KEY = env("SECRET_KEY")
+SECRET_KEY = env("SECRET_KEY", default="insecure-dev-secret-change-me")
 DEBUG = env("DEBUG")
 
 ALLOWED_HOSTS = env.list(
@@ -20,7 +21,7 @@ ALLOWED_HOSTS = env.list(
     default=[
         "localhost",
         "127.0.0.1",
-        "backend",
+        "financial-backend",
         "frontend",
         "nginx",
     ],
@@ -95,17 +96,21 @@ WSGI_APPLICATION = 'financial_system.wsgi.application'
 ASGI_APPLICATION = 'financial_system.asgi.application'
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'financial_db',
-        'USER': 'financial_user',
-        'PASSWORD': 'financial_password',
-        'HOST': 'db',
-        'PORT': '5432',
-        'CONN_MAX_AGE': 600,
-        'CONN_HEALTH_CHECKS': True,
-    }
+    "default": dj_database_url.parse(
+        env(
+            "DATABASE_URL",
+            default="postgres://financial_user:financial_password@db:5432/financial_db",
+        ),
+        conn_max_age=600,
+        conn_health_checks=True,
+    )
 }
+
+if "test" in sys.argv:
+    DATABASES["default"] = {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": ":memory:",
+    }
 
 AUTH_PASSWORD_VALIDATORS = [
     {
@@ -200,10 +205,34 @@ CHANNEL_LAYERS = {
 }
 
 # Auth Mode
-AUTH_MODE = env('AUTH_MODE', default='native')
+AUTH_MODE = env("AUTH_MODE", default="native")
 
-# Internal IDP API Key
-FINANCIAL_INTERNAL_IDP_API_KEY = env('FINANCIAL_INTERNAL_IDP_API_KEY', default='')
+# Internal IDP API Key (must match FINANCIAL_INTERNAL_IDP_API_KEY in SSO/.env)
+FINANCIAL_INTERNAL_IDP_API_KEY = env("FINANCIAL_INTERNAL_IDP_API_KEY", default="")
+
+# Split-horizon Keycloak URLs. Browser sees KEYCLOAK_URL; containers use KEYCLOAK_INTERNAL_URL.
+KEYCLOAK_URL = env("KEYCLOAK_URL", default="http://localhost:8080")
+KEYCLOAK_INTERNAL_URL = env("KEYCLOAK_INTERNAL_URL", default="http://keycloak:8080")
+KEYCLOAK_REALM = env("KEYCLOAK_REALM", default="idp-dev")
+OIDC_CLIENT_ID = env("OIDC_CLIENT_ID", default="financial-client")
+OIDC_OP_ISSUER = env(
+    "OIDC_OP_ISSUER",
+    default=f"{KEYCLOAK_URL}/realms/{KEYCLOAK_REALM}",
+)
+OIDC_OP_JWKS_ENDPOINT = env(
+    "OIDC_OP_JWKS_ENDPOINT",
+    default=f"{KEYCLOAK_INTERNAL_URL}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/certs",
+)
+OIDC_JWKS_CACHE_TTL = env.int("OIDC_JWKS_CACHE_TTL", default=3600)
+
+# Launcher probes IDM for dms_role using the remaining DMS mapper secret.
+DMS_INTERNAL_API_BASE_URL = env(
+    "DMS_INTERNAL_API_BASE_URL",
+    default="http://backend:8000/api/v1/internal/idp",
+)
+DMS_INTERNAL_IDP_API_KEY = env("DMS_INTERNAL_IDP_API_KEY", default="")
+DMS_PUBLIC_URL = env("DMS_PUBLIC_URL", default="http://localhost:3000")
+INVENTORY_PUBLIC_URL = env("INVENTORY_PUBLIC_URL", default="http://localhost:3002")
 
 # Email
 EMAIL_BACKEND = env('EMAIL_BACKEND', default='django.core.mail.backends.console.EmailBackend')

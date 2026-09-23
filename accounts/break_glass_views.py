@@ -5,16 +5,12 @@ Hidden break-glass login views for emergency native authentication.
 Restricted to platform administrators (is_staff or is_superuser).
 """
 from django.conf import settings
-from django.views.decorators.csrf import csrf_exempt
-from django.http import JsonResponse
-from django.views.decorators.http import require_http_methods
 from django.contrib.auth.hashers import check_password
 from django.utils import timezone
 from django.shortcuts import render
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from django.conf import settings
 from .models import User, EmailOTP
 from audit.models import AuditLog, AuditEvent
 
@@ -28,7 +24,6 @@ class BreakGlassLoginView(APIView):
     authentication_classes = []
     
     def post(self, request):
-        auth_mode = getattr(settings, 'AUTH_MODE', 'native')
         email = request.data.get('email')
         password = request.data.get('password')
         
@@ -52,8 +47,8 @@ class BreakGlassLoginView(APIView):
                     status=status.HTTP_403_FORBIDDEN
                 )
             
-            # In keycloak mode, only allow platform admins
-            if auth_mode == 'keycloak' and not user.is_platform_admin():
+            # Always staff/superuser only — native form works regardless of AUTH_MODE.
+            if not user.is_platform_admin():
                 AuditLog.objects.create(
                     event=AuditEvent.USER_BREAK_GLASS_LOGIN_FAILED,
                     actor=user,

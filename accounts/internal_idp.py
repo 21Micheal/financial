@@ -1,263 +1,232 @@
 """
-accounts/internal_idp.py
+Internal identity API for Keycloak User Storage SPI federation.
 
-Internal API endpoints for Keycloak User Storage SPI federation.
-These endpoints are protected by a shared secret (FINANCIAL_INTERNAL_IDP_API_KEY)
-and must NOT inherit DRF's global authentication classes.
+HTTP shape matches the working SSO SPI contract:
+  Authorization: Bearer <FINANCIAL_INTERNAL_IDP_API_KEY>
+  mounted at /api/v1/internal/idp/
+
+authentication_classes and permission_classes are empty so DRF's default
+JWT/session auth cannot intercept the service bearer before the API-key check.
 """
+from __future__ import annotations
+
 from django.conf import settings
 from django.contrib.auth.hashers import check_password
-from django.http import JsonResponse, Http404
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
 from django.db.models import Q
-from django.utils import timezone
-from .models import User
+from django.utils.crypto import constant_time_compare
+from rest_framework import status
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from .models import Role, User
 
 
 class InternalIdpAPIView(APIView):
-    """
-    Base view for internal IDP API endpoints.
-    Protected by shared secret API key, NOT DRF's global authentication.
-    """
-    authentication_classes = []  # Critical: empty to avoid DRF global auth interception
+    authentication_classes = []
     permission_classes = []
-    
-    def dispatch(self, request, *args, **kwargs):
-        # Verify API key
-        api_key = request.headers.get('X-Internal-IDP-API-Key')
-        expected_key = getattr(settings, 'FINANCIAL_INTERNAL_IDP_API_KEY', '')
-        
-        if not api_key or api_key != expected_key:
-            return Response(
-                {'detail': 'Invalid or missing API key'},
-                status=status.HTTP_401_UNAUTHORIZED
-            )
-        
-        return super().dispatch(request, *args, **kwargs)
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        configured_key = getattr(settings, "FINANCIAL_INTERNAL_IDP_API_KEY", "") or ""
+        supplied = request.headers.get("Authorization", "")
+        prefix = "Bearer "
+        token = supplied[len(prefix):].strip() if supplied.startswith(prefix) else ""
+
+        if not configured_key or not token or not constant_time_compare(token, configured_key):
+            self.permission_denied(request, message="Invalid internal IdP credentials.")
 
 
-class UserLookupView(InternalIdpAPIView):
-    """
-    Look up a user by username (email).
-    Used by Keycloak User Storage SPI for authentication.
-    """
+def _user_payload(user: User) -> dict:
+    return {
+        "id": str(user.id),
+        "username": user.email,
+        "email": user.email,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "enabled": user.is_active,
+        "email_verified": True,
+        "created_at": user.created_at.isoformat() if user.created_at else None,
+        "updated_at": user.updated_at.isoformat() if user.updated_at else None,
+    }
+
+
+def _financial_permissions(user: User) -> list[str]:
+    if user.is_superuser or user.role == Role.ADMIN:
+        return ["*"]
+    if user.role == Role.FINANCE_STAFF:
+        return ["finance.read", "finance.write"]
+    if user.role == Role.CLIENT_ADMIN:
+        return ["finance.read", "org.manage"]
+    return ["finance.read"]
+
+
+def _authorization_payload(user: User) -> dict:
+    return {
+        "financial_role": user.role,
+        "permissions": _financial_permissions(user),
+        "organization_id": str(user.organization_id) if user.organization_id else None,
+        "is_staff": bool(user.is_staff or user.is_superuser),
+    }
+
+
+class InternalIdpUserLookupView(InternalIdpAPIView):
     def get(self, request):
-        username = request.query_params.get('username')
-        if not username:
-            return Response(
-                {'detail': 'username parameter required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        try:
-            user = User.objects.get(email__iexact=username)
-            return Response({
-                'id': str(user.id),
-                'username': user.email,
-                'email': user.email,
-                'first_name': user.first_name,
-                'last_name': user.last_name,
-                'enabled': user.is_active,
-                'email_verified': True,
-                'attributes': {
-                    'role': user.role,
-                    'organization_id': str(user.organization.id) if user.organization else None,
-                    'is_staff': user.is_staff,
-                    'is_superuser': user.is_superuser,
-                }
-            })
-        except User.DoesNotExist:
-            return Response(
-                {'detail': 'User not found'},
-                status=status.HTTP_404_NOT_FOUND
-            )
+        email = request.query_params.get("email", "").strip().lower()
+        user_id = request.query_params.get("id", "").strip()
+        username = request.query_params.get("username", "").strip().lower()
 
-
-class UserSearchView(InternalIdpAPIView):
-    """
-    Search for users by email or name.
-    Used by Keycloak User Storage SPI for user search.
-    """
-    def get(self, request):
-        query = request.query_params.get('search', '')
-        max_results = int(request.query_params.get('max', '10'))
-        
+        query = Q()
+        if user_id:
+            query |= Q(id=user_id)
+        if email:
+            query |= Q(email=email)
+        if username:
+            query |= Q(email=username)
         if not query:
             return Response(
-                {'detail': 'search parameter required'},
-                status=status.HTTP_400_BAD_REQUEST
+                {"detail": "Provide id, email, or username."},
+                status=status.HTTP_400_BAD_REQUEST,
             )
-        
-        users = User.objects.filter(
-            Q(email__icontains=query) |
-            Q(first_name__icontains=query) |
-            Q(last_name__icontains=query)
-        ).filter(is_active=True)[:max_results]
-        
-        results = [
-            {
-                'id': str(user.id),
-                'username': user.email,
-                'email': user.email,
-                'first_name': user.first_name,
-                'last_name': user.last_name,
-                'enabled': user.is_active,
-            }
-            for user in users
-        ]
-        
-        return Response({'users': results})
+
+        user = User.objects.filter(query).first()
+        if not user:
+            return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+        return Response(_user_payload(user))
 
 
-class UserValidateView(InternalIdpAPIView):
-    """
-    Validate user credentials.
-    Used by Keycloak User Storage SPI for password authentication.
-    """
+class InternalIdpUserSearchView(InternalIdpAPIView):
+    def get(self, request):
+        q = request.query_params.get("q", "").strip()
+        try:
+            first = max(int(request.query_params.get("first", 0)), 0)
+            max_results = min(max(int(request.query_params.get("max", 20)), 1), 100)
+        except ValueError:
+            return Response(
+                {"detail": "first and max must be integers."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        users = User.objects.all().order_by("email")
+        if q:
+            users = users.filter(
+                Q(email__icontains=q)
+                | Q(first_name__icontains=q)
+                | Q(last_name__icontains=q)
+            )
+        count = users.count()
+        results = [_user_payload(user) for user in users[first:first + max_results]]
+        return Response({"count": count, "results": results})
+
+
+class InternalIdpValidatePasswordView(InternalIdpAPIView):
     def post(self, request):
-        username = request.data.get('username')
-        password = request.data.get('password')
-        
+        username = (request.data.get("username") or "").strip().lower()
+        password = request.data.get("password") or ""
         if not username or not password:
-            return Response(
-                {'detail': 'username and password required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        try:
-            user = User.objects.get(email__iexact=username)
-            if not user.is_active:
-                return Response(
-                    {'detail': 'User account is disabled'},
-                    status=status.HTTP_403_FORBIDDEN
-                )
-            
-            if check_password(password, user.password):
-                return Response({'valid': True})
-            else:
-                return Response(
-                    {'valid': False, 'detail': 'Invalid password'},
-                    status=status.HTTP_401_UNAUTHORIZED
-                )
-        except User.DoesNotExist:
-            return Response(
-                {'valid': False, 'detail': 'User not found'},
-                status=status.HTTP_404_NOT_FOUND
-            )
+            return Response({"valid": False})
+
+        user = User.objects.filter(email__iexact=username).first()
+        if not user or not user.is_active or not check_password(password, user.password):
+            return Response({"valid": False})
+        return Response({"valid": True, "user": _user_payload(user)})
 
 
-class UserCreateView(InternalIdpAPIView):
-    """
-    Create a new user (write-through from Keycloak admin console).
-    Used by Keycloak User Storage SPI when users are created via Keycloak admin.
-    """
+class InternalIdpUserCreateView(InternalIdpAPIView):
     def post(self, request):
-        email = request.data.get('email')
-        first_name = request.data.get('first_name', '')
-        last_name = request.data.get('last_name', '')
-        password = request.data.get('password', '')
-        
+        email = (request.data.get("email") or "").strip().lower()
+        first_name = (request.data.get("first_name") or "").strip()
+        last_name = (request.data.get("last_name") or "").strip()
+        enabled = bool(request.data.get("enabled", True))
+
         if not email:
-            return Response(
-                {'detail': 'email required'},
-                status=status.HTTP_400_BAD_REQUEST
+            return Response({"detail": "email is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = User.objects.filter(email=email).first()
+        created = False
+        if user is None:
+            user = User.objects.create_user(
+                email=email,
+                password=None,
+                first_name=first_name,
+                last_name=last_name,
+                is_active=enabled,
+                role=Role.CLIENT_USER,
+                must_change_password=True,
             )
-        
-        # Check if user already exists
-        if User.objects.filter(email__iexact=email).exists():
-            return Response(
-                {'detail': 'User already exists'},
-                status=status.HTTP_409_CONFLICT
-            )
-        
-        # Create user
-        user = User.objects.create_user(
-            email=email,
-            first_name=first_name,
-            last_name=last_name,
-            password=password if password else None,
-            role='client_user',  # Default role for Keycloak-created users
-            must_change_password=True if password else False
-        )
-        
-        return Response({
-            'id': str(user.id),
-            'username': user.email,
-            'email': user.email,
-            'first_name': user.first_name,
-            'last_name': user.last_name,
-            'enabled': user.is_active,
-        }, status=status.HTTP_201_CREATED)
+            created = True
+
+        payload = _user_payload(user)
+        payload["default_role"] = Role.CLIENT_USER
+        return Response(payload, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
 
-class UserUpdateView(InternalIdpAPIView):
-    """
-    Update user profile or password.
-    Used by Keycloak User Storage SPI for profile updates.
-    """
-    def put(self, request):
-        username = request.data.get('username')
-        if not username:
-            return Response(
-                {'detail': 'username required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        try:
-            user = User.objects.get(email__iexact=username)
-            
-            # Update fields if provided
-            if 'first_name' in request.data:
-                user.first_name = request.data['first_name']
-            if 'last_name' in request.data:
-                user.last_name = request.data['last_name']
-            if 'email' in request.data:
-                user.email = request.data['email']
-            if 'password' in request.data:
-                user.set_password(request.data['password'])
-                user.password_changed_at = timezone.now()
-                user.must_change_password = False
-            
-            user.save()
-            
-            return Response({
-                'id': str(user.id),
-                'username': user.email,
-                'email': user.email,
-                'first_name': user.first_name,
-                'last_name': user.last_name,
-                'enabled': user.is_active,
-            })
-        except User.DoesNotExist:
-            return Response(
-                {'detail': 'User not found'},
-                status=status.HTTP_404_NOT_FOUND
-            )
+class InternalIdpUserProfileView(InternalIdpAPIView):
+    def patch(self, request, user_id):
+        user = User.objects.filter(id=user_id).first()
+        if not user:
+            return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        update_fields = []
+        for field, attr in (
+            ("email", "email"),
+            ("first_name", "first_name"),
+            ("last_name", "last_name"),
+            ("enabled", "is_active"),
+        ):
+            if field not in request.data:
+                continue
+            value = request.data[field]
+            if field == "email":
+                value = str(value).strip().lower()
+                if not value:
+                    return Response(
+                        {"detail": "email cannot be blank."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+            elif field == "enabled":
+                value = bool(value)
+            else:
+                value = str(value).strip()
+            if getattr(user, attr) != value:
+                setattr(user, attr, value)
+                update_fields.append(attr)
+
+        if update_fields:
+            user.save(update_fields=update_fields)
+        return Response(_user_payload(user))
 
 
-class UserDeleteView(InternalIdpAPIView):
-    """
-    Soft-delete a user (deactivate account).
-    Used by Keycloak User Storage SPI for user deletion.
-    """
-    def delete(self, request):
-        username = request.query_params.get('username')
-        if not username:
-            return Response(
-                {'detail': 'username parameter required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        try:
-            user = User.objects.get(email__iexact=username)
-            user.is_active = False
-            user.save()
-            
-            return Response({'detail': 'User deactivated'})
-        except User.DoesNotExist:
-            return Response(
-                {'detail': 'User not found'},
-                status=status.HTTP_404_NOT_FOUND
-            )
+class InternalIdpUserPasswordView(InternalIdpAPIView):
+    def put(self, request, user_id):
+        password = request.data.get("password") or ""
+        temporary = bool(request.data.get("temporary", False))
+        if not password:
+            return Response({"detail": "password is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = User.objects.filter(id=user_id).first()
+        if not user:
+            return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        user.set_password(password)
+        user.must_change_password = temporary
+        user.save(update_fields=["password", "must_change_password"])
+        return Response({"updated": True, "must_change_password": user.must_change_password})
+
+
+class InternalIdpUserAuthorizationView(InternalIdpAPIView):
+    def get(self, request, user_id=None):
+        user = None
+        if user_id:
+            user = User.objects.filter(id=user_id).first()
+        else:
+            email = (request.query_params.get("email") or "").strip().lower()
+            if not email:
+                return Response(
+                    {"detail": "Provide user id or email."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            user = User.objects.filter(email=email).first()
+
+        if not user:
+            return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+        return Response(_authorization_payload(user))

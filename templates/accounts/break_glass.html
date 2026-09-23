@@ -175,7 +175,7 @@
                 const otp = document.getElementById('otp').value.trim();
                 
                 try {
-                    const response = await fetch('/api/v1/auth/verify-otp/', {
+                    const response = await fetch('/api/v1/auth/break-glass-verify-otp/', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',

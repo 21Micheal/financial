@@ -1,26 +1,17 @@
-"""
-financial_system/urls.py
-
-URL configuration for the financial system project
-"""
 from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from accounts.break_glass_views import break_glass_page
+from licensing.views import ConfigView
 
 urlpatterns = [
-    # Hidden break-glass route (intentionally obfuscated URL)
-    path('operations/console/', break_glass_page, name='break-glass-login'),
-    
-    path('admin/', admin.site.urls),
-    
-    # Public API endpoints
-    path('api/v1/config/', include('licensing.urls')),
-    path('api/v1/auth/', include('accounts.urls')),
-    
-    # Internal IDP API (for Keycloak User Storage SPI)
-    path('internal/idp/', include('accounts.internal_urls')),
+    path("operations/console/", break_glass_page, name="break-glass-login"),
+    path("admin/", admin.site.urls),
+    path("api/v1/config/", ConfigView.as_view(), name="config"),
+    path("api/v1/launcher/", include("licensing.urls")),
+    path("api/v1/auth/", include("accounts.urls")),
+    path("api/v1/internal/idp/", include("accounts.internal_urls")),
 ]
 
 if settings.DEBUG:

@@ -30,7 +30,7 @@ services:
       timeout: 5s
       retries: 5
 
-  backend:
+  financial-backend:
     build:
       context: .
       dockerfile: Dockerfile
@@ -40,10 +40,21 @@ services:
     environment:
       - DEBUG=True
       - SECRET_KEY=${SECRET_KEY:-insecure-dev-secret-change-me}
-      - DATABASE_URL=postgres://financial_user:financial_password@db:5432/financial_db
+      - DATABASE_URL=${DATABASE_URL:-postgres://financial_user:financial_password@db:5432/financial_db}
+      - AUTH_MODE=${AUTH_MODE:-native}
       - FINANCIAL_INTERNAL_IDP_API_KEY=${FINANCIAL_INTERNAL_IDP_API_KEY:-}
-      - REDIS_URL=redis://:redis_password@redis:6379/0
-      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1,backend,frontend,nginx}
+      - DMS_INTERNAL_IDP_API_KEY=${DMS_INTERNAL_IDP_API_KEY:-}
+      - DMS_INTERNAL_API_BASE_URL=${DMS_INTERNAL_API_BASE_URL:-http://backend:8000/api/v1/internal/idp}
+      - DMS_PUBLIC_URL=${DMS_PUBLIC_URL:-http://localhost:3000}
+      - INVENTORY_PUBLIC_URL=${INVENTORY_PUBLIC_URL:-http://localhost:3002}
+      - KEYCLOAK_URL=${KEYCLOAK_URL:-http://localhost:8080}
+      - KEYCLOAK_INTERNAL_URL=${KEYCLOAK_INTERNAL_URL:-http://keycloak:8080}
+      - KEYCLOAK_REALM=${KEYCLOAK_REALM:-idp-dev}
+      - OIDC_CLIENT_ID=${OIDC_CLIENT_ID:-financial-client}
+      - OIDC_OP_ISSUER=${OIDC_OP_ISSUER:-http://localhost:8080/realms/idp-dev}
+      - OIDC_OP_JWKS_ENDPOINT=${OIDC_OP_JWKS_ENDPOINT:-http://keycloak:8080/realms/idp-dev/protocol/openid-connect/certs}
+      - REDIS_URL=${REDIS_URL:-redis://:redis_password@redis:6379/0}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1,financial-backend,frontend,nginx}
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:3001,http://127.0.0.1:3001}
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3001}
       - TZ=Africa/Nairobi
@@ -71,7 +82,7 @@ services:
     ports:
       - "3001:80"
     depends_on:
-      - backend
+      - financial-backend
     networks:
       - default
 

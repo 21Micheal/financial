@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8001/api/v1'
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1'
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -31,7 +31,9 @@ export const authAPI = {
       headers: { Authorization: `Bearer ${token}` },
     }),
   refreshToken: (refresh: string) =>
-    apiClient.post('/token/refresh/', { refresh }),
+    apiClient.post('/auth/token/refresh/', { refresh }),
+  exchangeOidc: (idToken: string) =>
+    apiClient.post('/auth/oidc/exchange/', { id_token: idToken }),
 }
 
 export const configAPI = {
