@@ -10,6 +10,7 @@ interface User {
   organization_id?: string
   is_staff: boolean
   is_superuser: boolean
+  must_change_password: boolean   // fix #7D
 }
 
 interface AuthState {
@@ -35,8 +36,6 @@ export const useAuthStore = create<AuthState>()(
       logout: () =>
         set({ user: null, accessToken: null, refreshToken: null, isAuthenticated: false }),
     }),
-    {
-      name: 'financial-auth',
-    }
+    { name: 'financial-auth' }
   )
 )

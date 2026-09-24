@@ -41,7 +41,7 @@ class UserAdmin(BaseUserAdmin):
     add_form = UserCreationForm
     ordering = ("email",)
     list_display = ["email", "first_name", "last_name", "role", "organization", "is_active", "is_staff"]
-    list_filter = ["role", "organization", "is_active", "is_staff", "is_superuser", "mfa_enabled"]
+    list_filter = ["role", "organization", "is_active", "is_staff", "is_superuser"]
     search_fields = ["email", "first_name", "last_name"]
     readonly_fields = ["id", "created_at", "updated_at", "last_login"]
     filter_horizontal = ("groups", "user_permissions")
@@ -50,7 +50,7 @@ class UserAdmin(BaseUserAdmin):
         (None, {"fields": ("id", "email", "password")}),
         ("Profile", {"fields": ("first_name", "last_name", "role", "organization")}),
         ("Access", {"fields": (
-            "is_active", "is_staff", "is_superuser", "mfa_enabled",
+            "is_active", "is_staff", "is_superuser",
             "must_change_password", "password_changed_at", "groups", "user_permissions",
         )}),
         ("Timestamps", {"fields": ("last_login", "created_at", "updated_at")}),

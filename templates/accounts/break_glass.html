@@ -1,217 +1,169 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Financial System - Emergency Access</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-        }
-        .container {
-            background: white;
-            padding: 2rem;
-            border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            max-width: 400px;
-            width: 100%;
-        }
-        h1 {
-            color: #333;
-            margin-bottom: 0.5rem;
-            font-size: 1.5rem;
-        }
-        p {
-            color: #666;
-            margin-bottom: 1.5rem;
-            font-size: 0.875rem;
-        }
-        .form-group {
-            margin-bottom: 1rem;
-        }
-        label {
-            display: block;
-            margin-bottom: 0.5rem;
-            color: #333;
-            font-size: 0.875rem;
-        }
-        input {
-            width: 100%;
-            padding: 0.75rem;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 1rem;
-        }
-        input:focus {
-            outline: none;
-            border-color: #667eea;
-        }
-        button {
-            width: 100%;
-            padding: 0.75rem;
-            background: #667eea;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            font-size: 1rem;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-        button:hover {
-            background: #5568d3;
-        }
-        button:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-        }
-        .error {
-            background: #f8d7da;
-            color: #721c24;
-            padding: 0.75rem;
-            border-radius: 4px;
-            margin-bottom: 1rem;
-            border: 1px solid #f5c6cb;
-            font-size: 0.875rem;
-            display: none;
-        }
-        .error.show {
-            display: block;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Emergency Access — Financial System</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f172a;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+    }
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 2rem;
+      width: 100%;
+      max-width: 400px;
+      color: #e2e8f0;
+    }
+    .badge {
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: .1em;
+      color: #f59e0b;
+      border: 1px solid #f59e0b44;
+      border-radius: 4px;
+      padding: 2px 8px;
+      display: inline-block;
+      margin-bottom: 1rem;
+    }
+    h1 { font-size: 1.3rem; color: #f1f5f9; margin-bottom: .35rem; }
+    p  { font-size: 0.83rem; color: #94a3b8; margin-bottom: 1.5rem; }
+    label { display: block; font-size: .8rem; font-weight: 600; color: #cbd5e1; margin-bottom: .35rem; }
+    input {
+      width: 100%; padding: .65rem .85rem;
+      background: #0f172a; border: 1px solid #334155; border-radius: 6px;
+      color: #e2e8f0; font-size: .95rem; margin-bottom: 1rem;
+      transition: border-color .2s;
+    }
+    input:focus { outline: none; border-color: #f59e0b; }
+    button {
+      width: 100%; padding: .7rem;
+      background: #f59e0b; color: #0f172a;
+      border: none; border-radius: 6px;
+      font-size: .95rem; font-weight: 700; cursor: pointer;
+      transition: background .2s;
+    }
+    button:hover:not(:disabled) { background: #d97706; }
+    button:disabled { opacity: .55; cursor: not-allowed; }
+    .error {
+      background: #7f1d1d44; color: #fca5a5;
+      border: 1px solid #7f1d1d; border-radius: 6px;
+      padding: .65rem .9rem; font-size: .82rem; margin-bottom: 1rem;
+      display: none;
+    }
+    .error.show { display: block; }
+    .footer { margin-top: 1.2rem; font-size: .72rem; color: #475569; text-align: center; }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Emergency Access</h1>
-        <p>This is a restricted access point for platform administrators only.</p>
-        
-        <div class="error" id="error"></div>
-        
-        <form id="loginForm">
-            <div class="form-group">
-                <label for="email">Email</label>
-                <input type="email" id="email" name="email" required autocomplete="username">
-            </div>
-            <div class="form-group">
-                <label for="password">Password</label>
-                <input type="password" id="password" name="password" required autocomplete="current-password">
-            </div>
-            <button type="submit" id="submitBtn">Request OTP</button>
-        </form>
-    </div>
+<div class="card">
+  <span class="badge">EMERGENCY ACCESS</span>
+  <h1>Platform Administrator Login</h1>
+  <p>Restricted to platform administrators. All activity is logged and audited.</p>
 
-    <script>
-        const form = document.getElementById('loginForm');
-        const submitBtn = document.getElementById('submitBtn');
-        const errorDiv = document.getElementById('error');
-        
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            errorDiv.classList.remove('show');
-            submitBtn.disabled = true;
-            submitBtn.textContent = 'Validating...';
-            
-            const email = document.getElementById('email').value.trim().toLowerCase();
-            const password = document.getElementById('password').value;
-            
-            try {
-                const response = await fetch('/api/v1/auth/break-glass-login/', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ email, password })
-                });
-                
-                const data = await response.json();
-                
-                if (response.ok) {
-                    sessionStorage.setItem('break_glass_user_id', data.user_id);
-                    showOtpForm(data.user_id);
-                } else {
-                    errorDiv.textContent = data.detail || 'Login failed';
-                    errorDiv.classList.add('show');
-                    submitBtn.disabled = false;
-                    submitBtn.textContent = 'Request OTP';
-                }
-            } catch (err) {
-                errorDiv.textContent = 'Network error. Please try again.';
-                errorDiv.classList.add('show');
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'Request OTP';
-            }
+  <div class="error" id="errorBox"></div>
+
+  <form id="credForm">
+    <label for="bg-email">Email</label>
+    <input type="email" id="bg-email" required autocomplete="username" placeholder="admin@organisation.com">
+    <label for="bg-password">Password</label>
+    <input type="password" id="bg-password" required autocomplete="current-password" placeholder="••••••••••">
+    <button type="submit" id="credBtn">Request OTP</button>
+  </form>
+
+  <div class="footer">Session activity is logged under financial audit compliance.</div>
+</div>
+
+<script>
+  const API = '/api/v1/auth';
+  const FRONTEND = '{{ FRONTEND_URL }}';
+
+  function showError(msg) {
+    const el = document.getElementById('errorBox');
+    el.textContent = msg;
+    el.classList.add('show');
+  }
+  function clearError() { document.getElementById('errorBox').classList.remove('show'); }
+
+  /* ── Step 1: credentials ─────────────────────────── */
+  document.getElementById('credForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearError();
+    const btn = document.getElementById('credBtn');
+    btn.disabled = true;
+    btn.textContent = 'Sending OTP…';
+
+    const email    = document.getElementById('bg-email').value.trim().toLowerCase();
+    const password = document.getElementById('bg-password').value;
+
+    try {
+      const res  = await fetch(`${API}/break-glass-login/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) { showError(data.detail || 'Login failed.'); btn.disabled = false; btn.textContent = 'Request OTP'; return; }
+      showOtpStep(data.user_id);
+    } catch {
+      showError('Network error. Please try again.');
+      btn.disabled = false;
+      btn.textContent = 'Request OTP';
+    }
+  });
+
+  /* ── Step 2: OTP ─────────────────────────────────── */
+  function showOtpStep(userId) {
+    const card = document.querySelector('.card');
+    card.querySelector('h1').textContent = 'Enter OTP';
+    card.querySelector('p').textContent  = 'Enter the 6-digit code sent to your email. It expires in 10 minutes.';
+    card.querySelector('#credForm').remove();
+    clearError();
+
+    const form = document.createElement('form');
+    form.id = 'otpForm';
+    form.innerHTML = `
+      <label for="bg-otp">6-digit code</label>
+      <input type="text" id="bg-otp" maxlength="6" pattern="\\d{6}" required autocomplete="one-time-code" placeholder="000000" inputmode="numeric">
+      <button type="submit" id="otpBtn">Verify &amp; Continue</button>
+    `;
+    card.querySelector('.footer').before(form);
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      clearError();
+      const btn = document.getElementById('otpBtn');
+      btn.disabled = true;
+      btn.textContent = 'Verifying…';
+      const otp = document.getElementById('bg-otp').value.trim();
+
+      try {
+        const res  = await fetch(`${API}/break-glass-verify-otp/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: userId, otp }),
         });
-        
-        function showOtpForm(userId) {
-            form.innerHTML = `
-                <div class="form-group">
-                    <label for="otp">Enter OTP sent to your email</label>
-                    <input type="text" id="otp" name="otp" required autocomplete="one-time-code" maxlength="6" pattern="\\d{6}">
-                </div>
-                <button type="submit" id="submitBtn">Verify & Login</button>
-                <div class="error" id="error"></div>
-            `;
-            
-            const newSubmitBtn = document.getElementById('submitBtn');
-            const newErrorDiv = document.getElementById('error');
-            
-            const newForm = document.getElementById('loginForm');
-            newForm.addEventListener('submit', async (e) => {
-                e.preventDefault();
-                newErrorDiv.classList.remove('show');
-                newSubmitBtn.disabled = true;
-                newSubmitBtn.textContent = 'Verifying...';
-                
-                const otp = document.getElementById('otp').value.trim();
-                
-                try {
-                    const response = await fetch('/api/v1/auth/break-glass-verify-otp/', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            user_id: userId,
-                            otp,
-                            break_glass: true
-                        })
-                    });
-                    
-                    const data = await response.json();
-                    
-                    if (response.ok) {
-                        // Store tokens temporarily and redirect with a special flag
-                        sessionStorage.setItem('break_glass_access', data.access);
-                        sessionStorage.setItem('break_glass_refresh', data.refresh);
-                        sessionStorage.setItem('break_glass_user', JSON.stringify(data.user));
-                        sessionStorage.removeItem('break_glass_user_id');
-                        
-                        // Redirect to frontend with a special flag
-                        window.location.href = '{{ FRONTEND_URL }}?break_glass=true';
-                    } else {
-                        newErrorDiv.textContent = data.detail || 'Verification failed';
-                        newErrorDiv.classList.add('show');
-                        newSubmitBtn.disabled = false;
-                        newSubmitBtn.textContent = 'Verify & Login';
-                    }
-                } catch (err) {
-                    newErrorDiv.textContent = 'Network error. Please try again.';
-                    newErrorDiv.classList.add('show');
-                    newSubmitBtn.disabled = false;
-                    newSubmitBtn.textContent = 'Verify & Login';
-                }
-            });
-        }
-    </script>
+        const data = await res.json();
+        if (!res.ok) { showError(data.detail || 'Verification failed.'); btn.disabled = false; btn.textContent = 'Verify & Continue'; return; }
+
+        /* fix #5: pass signed token via URL — no cross-origin sessionStorage */
+        window.location.href = `${FRONTEND}/auth/break-glass?token=${encodeURIComponent(data.break_glass_token)}`;
+      } catch {
+        showError('Network error. Please try again.');
+        btn.disabled = false;
+        btn.textContent = 'Verify & Continue';
+      }
+    });
+  }
+</script>
 </body>
 </html>

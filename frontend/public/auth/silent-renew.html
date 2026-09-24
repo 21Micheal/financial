@@ -2,10 +2,19 @@
 <html>
   <head><title>Silent OIDC renew</title></head>
   <body>
-    <script src="https://cdn.jsdelivr.net/npm/oidc-client-ts@3/dist/browser/oidc-client-ts.min.js"></script>
+    <!--
+      Loaded in a hidden iframe by oidc-client-ts for silent session renewal.
+      Pinned to the exact version installed locally (2.5.0).
+      fix #10E: SRI hash prevents CDN supply-chain substitution.
+    -->
+    <script
+      src="https://cdn.jsdelivr.net/npm/oidc-client-ts@2.5.0/dist/browser/oidc-client-ts.min.js"
+      integrity="sha384-MHUNeJE/qITrhPpBkqEoE1BoLUsgU+jWZAUe/hiu/1ZF9ifLApmCgv2o/cRV4b54"
+      crossorigin="anonymous">
+    </script>
     <script>
       new oidc.UserManager({}).signinSilentCallback()
-        .catch(function(err) { console.warn("Silent renew callback error:", err); });
+        .catch(function(err) { console.warn('Silent renew callback:', err); });
     </script>
   </body>
 </html>

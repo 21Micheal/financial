@@ -49,13 +49,9 @@ INSTALLED_APPS = [
     # Third-party
     "rest_framework",
     "rest_framework_simplejwt",
+    "rest_framework_simplejwt.token_blacklist",  # fix #7B: enables blacklist on rotation
     "corsheaders",
     "django_filters",
-    "django_otp",
-    "django_otp.plugins.otp_totp",
-    "django_otp.plugins.otp_email",
-    "celery",
-    "channels",
     # Local
     "accounts",
     "licensing",
@@ -69,7 +65,6 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
-    "django_otp.middleware.OTPMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -93,7 +88,6 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'financial_system.wsgi.application'
-ASGI_APPLICATION = 'financial_system.asgi.application'
 
 DATABASES = {
     "default": dj_database_url.parse(
@@ -112,12 +106,21 @@ if "test" in sys.argv:
         "NAME": ":memory:",
     }
 
+# Redis cache — used by DRF throttling and JWKS cache
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": env("REDIS_URL", default="redis://localhost:6379/0"),
+    }
+}
+
 AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
     },
     {
         'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        'OPTIONS': {'min_length': 10},
     },
     {
         'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
@@ -156,7 +159,6 @@ CORS_ALLOW_CREDENTIALS = True
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework_simplejwt.authentication.JWTAuthentication',
-        'rest_framework.authentication.SessionAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
@@ -168,9 +170,18 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
+    # Throttling — fix #1: rate-limit login endpoint
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '60/min',
+        'login': '10/min',
+    },
+    'EXCEPTION_HANDLER': 'rest_framework.views.exception_handler',
 }
 
-# Simple JWT
+# Simple JWT — fix #7B: blacklist app installed above, so rotation blacklisting works
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
@@ -184,27 +195,7 @@ SIMPLE_JWT = {
     'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
 }
 
-# OTP (for native login MFA)
-OTP_TOTP_ISSUER = 'Financial System'
-OTP_EMAIL_SUBJECT = 'Your Financial System Login Code'
-OTP_EMAIL_SENDER = env('DEFAULT_FROM_EMAIL', default='financial@example.com')
-
-# Celery
-CELERY_BROKER_URL = env('REDIS_URL', default='redis://localhost:6379/0')
-CELERY_RESULT_BACKEND = env('REDIS_URL', default='redis://localhost:6379/0')
-CELERY_ACCEPT_CONTENT = ['json']
-CELERY_TASK_SERIALIZER = 'json'
-CELERY_RESULT_SERIALIZER = 'json'
-CELERY_TIMEZONE = TIME_ZONE
-
-# Channels
-CHANNEL_LAYERS = {
-    'default': {
-        'BACKEND': 'channels.layers.InMemoryChannelLayer',
-    },
-}
-
-# Auth Mode
+# Auth Mode — "native" or "keycloak"
 AUTH_MODE = env("AUTH_MODE", default="native")
 
 # Internal IDP API Key (must match FINANCIAL_INTERNAL_IDP_API_KEY in SSO/.env)
@@ -225,7 +216,7 @@ OIDC_OP_JWKS_ENDPOINT = env(
 )
 OIDC_JWKS_CACHE_TTL = env.int("OIDC_JWKS_CACHE_TTL", default=3600)
 
-# Launcher probes IDM for dms_role using the remaining DMS mapper secret.
+# Launcher: DMS integration
 DMS_INTERNAL_API_BASE_URL = env(
     "DMS_INTERNAL_API_BASE_URL",
     default="http://backend:8000/api/v1/internal/idp",
@@ -233,8 +224,6 @@ DMS_INTERNAL_API_BASE_URL = env(
 DMS_INTERNAL_IDP_API_KEY = env("DMS_INTERNAL_IDP_API_KEY", default="")
 DMS_PUBLIC_URL = env("DMS_PUBLIC_URL", default="http://localhost:3000")
 
-# Per-product launcher integration, keyed by Product.slug. A role_api product
-# with no entry here is reported "unavailable" (fails closed), never "ready".
 PRODUCT_INTEGRATIONS = {
     "dms": {
         "base_url": DMS_INTERNAL_API_BASE_URL,
@@ -244,11 +233,14 @@ PRODUCT_INTEGRATIONS = {
     },
 }
 
-# Email
+# Email — fix #8A: use typed env methods to avoid "False" string being truthy
 EMAIL_BACKEND = env('EMAIL_BACKEND', default='django.core.mail.backends.console.EmailBackend')
 EMAIL_HOST = env('EMAIL_HOST', default='')
-EMAIL_PORT = env('EMAIL_PORT', default=587)
-EMAIL_USE_TLS = env('EMAIL_USE_TLS', default=True)
+EMAIL_PORT = env.int('EMAIL_PORT', default=587)
+EMAIL_USE_TLS = env.bool('EMAIL_USE_TLS', default=True)
 EMAIL_HOST_USER = env('EMAIL_HOST_USER', default='')
 EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
 DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='financial@example.com')
+
+OTP_EMAIL_SUBJECT = 'Your Financial System Login Code'
+OTP_EMAIL_SENDER = DEFAULT_FROM_EMAIL

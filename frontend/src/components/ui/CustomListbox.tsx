@@ -167,7 +167,7 @@ export default function CustomListbox({
   }, [activeIndex]);
 
   return (
-    <div ref={rootRef} className={`custom-listbox ${className}`}>
+    <div ref={rootRef} className={`relative inline-block max-w-full ${className}`}>
       <button
         ref={buttonRef}
         type="button"
@@ -178,12 +178,12 @@ export default function CustomListbox({
         disabled={disabled}
         onClick={() => !disabled && setOpen((v) => !v)}
         onKeyDown={onKeyDown}
-        className={`custom-listbox-button ${buttonClassName} ${disabled ? "custom-listbox-button-disabled" : ""}`}
+        className={`flex w-full min-w-0 items-center justify-between gap-2 text-left ${buttonClassName} ${disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"} focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c71f37]`}
       >
-        <span className="custom-listbox-value">
+        <span className="min-w-0 truncate">
           {options.find((o) => o.value === value)?.label ?? options[0]?.label}
         </span>
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" className="custom-listbox-chevron" aria-hidden="true">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" className="shrink-0 opacity-60" aria-hidden="true">
           <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </button>
@@ -196,7 +196,7 @@ export default function CustomListbox({
             role="listbox"
             tabIndex={-1}
             aria-label={ariaLabel}
-            className={`custom-listbox-menu ${listClassName}`}
+            className={`fixed z-50 overflow-x-hidden overflow-y-auto rounded border border-[#b5c2d1] bg-white py-1 shadow-lg ${listClassName}`}
             onKeyDown={onKeyDown}
             style={popoverStyle}
           >
@@ -215,7 +215,7 @@ export default function CustomListbox({
                   buttonRef.current?.focus();
                 }}
                 onMouseEnter={() => setActiveIndex(idx)}
-                className={`custom-listbox-option ${optionClassName} ${selected ? "custom-listbox-option-selected" : active ? "custom-listbox-option-active" : ""}`}
+                className={`cursor-pointer px-3 py-2 text-sm leading-snug text-[#202d3f] ${optionClassName} ${selected ? "bg-[#c71f37] text-white" : active ? "bg-[#fef2f3] text-[#131c26]" : ""}`}
               >
                 <span className="block break-words">{opt.label}</span>
               </li>

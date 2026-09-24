@@ -11,11 +11,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_ROOT_USER_ACTION=ignore \
     DEBIAN_FRONTEND=noninteractive
 
-# Compile-time dependencies for both PostgreSQL and MySQL
+# Compile-time dependencies (PostgreSQL only — MySQL removed with mysqlclient)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
-    default-libmysqlclient-dev \
     pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
@@ -38,10 +37,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Runtime-only system packages for both PostgreSQL and MySQL
+# Runtime-only system packages (PostgreSQL only)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
-    libmariadb3 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
@@ -49,12 +47,12 @@ COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH" \
     VIRTUAL_ENV=/opt/venv
 
-# Verify native lib linkage for both databases
+# Verify native lib linkage
 RUN python -c "import psycopg2; print('native lib linkage OK (postgres)')"
-RUN python -c "import MySQLdb; print('native lib linkage OK (mysql)')"
 
 COPY . .
 
 EXPOSE 8001
 
-CMD ["gunicorn", "financial_system.wsgi:application", "--bind", "0.0.0.0:8001"]
+# fix #8B: gunicorn is now in requirements.txt (it wasn't before)
+CMD ["gunicorn", "financial_system.wsgi:application", "--bind", "0.0.0.0:8001", "--workers", "4", "--timeout", "120", "--access-logfile", "-"]

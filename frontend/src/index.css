@@ -1,5 +1,9 @@
 @import "./theme.css";
 
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 :root {
   font-family: var(--font-family);
   line-height: 1.5;
@@ -30,80 +34,4 @@ body {
 #root {
   width: 100%;
   min-height: 100vh;
-}
-
-.custom-listbox {
-  position: relative;
-  display: inline-block;
-  max-width: 100%;
-}
-
-.custom-listbox-button {
-  display: flex;
-  width: 100%;
-  min-width: 0;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  text-align: left;
-  cursor: pointer;
-}
-
-.custom-listbox-button:focus-visible {
-  outline: 2px solid var(--infor-red);
-  outline-offset: 2px;
-}
-
-.custom-listbox-button-disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-
-.custom-listbox-value {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.custom-listbox-chevron {
-  flex-shrink: 0;
-  opacity: 0.6;
-}
-
-.custom-listbox-menu {
-  position: fixed;
-  z-index: 50;
-  overflow-x: hidden;
-  overflow-y: auto;
-  border: 1px solid var(--infor-slate-300);
-  border-radius: 4px;
-  background: #ffffff;
-  padding: 0.25rem 0;
-  box-shadow: var(--shadow-md);
-}
-
-.custom-listbox-option {
-  color: var(--infor-slate-800);
-  cursor: pointer;
-  padding: 0.5rem 0.75rem;
-  font-size: 0.875rem;
-  line-height: 1.375;
-}
-
-.custom-listbox-option:hover,
-.custom-listbox-option-active {
-  background: var(--infor-red-light);
-  color: var(--infor-slate-900);
-}
-
-.custom-listbox-option-selected {
-  background: var(--infor-red);
-  color: #ffffff;
-}
-
-.custom-listbox-option-selected:hover,
-.custom-listbox-option-selected.custom-listbox-option-active {
-  background: var(--infor-red-hover);
-  color: #ffffff;
 }
