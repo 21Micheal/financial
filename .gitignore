@@ -27,4 +27,6 @@ out/
 # Logs
 *.log
 npm-debug.log*
+
+# Sensitive docs
 BREAK_GLASS_README.md
