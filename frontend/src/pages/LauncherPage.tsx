@@ -2,27 +2,39 @@ import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../store/authStore";
 import { launcherAPI } from "../services/api";
-import CustomListbox from "../components/ui/CustomListbox";
 import "./LauncherPage.css";
+
+type AccessStatus = "ready" | "not_provisioned" | "unavailable";
 
 interface LicensedSystem {
   system: string;
   display: string;
+  description: string;
+  info_url: string;
   public_url: string;
   licensed: boolean;
-  provisioned: boolean;
-  access_message?: string | null;
-  category?: "financials" | "idm" | "operations" | "reporting";
-  description?: string;
-  code?: string;
+  expires_at: string | null;
+  status: AccessStatus;
+  access_message: string | null;
 }
 
-const BUSINESS_UNITS = [
-  { value: "PK1", label: "PK1 - Main Operating Ledger (USD)" },
-  { value: "LON", label: "LON - EMEA Financial Entity (GBP)" },
-  { value: "NBO", label: "NBO - Regional Hub Entity (KES)" },
-  { value: "CORP", label: "CORP - Consolidated Group Accounts" },
-];
+const STATUS_LABEL: Record<AccessStatus, string> = {
+  ready: "Ready to open",
+  not_provisioned: "Account not set up",
+  unavailable: "Unavailable",
+};
+
+// "FSE DMS (Document Management System)" -> "FD"
+function initials(name: string): string {
+  const words = name
+    .replace(/\(.*?\)/g, "")
+    .split(/[\s–-]+/)
+    .filter(Boolean);
+  return words
+    .slice(0, 2)
+    .map((w) => w[0].toUpperCase())
+    .join("");
+}
 
 export default function LauncherPage() {
   const [systems, setSystems] = useState<LicensedSystem[]>([]);
@@ -30,9 +42,8 @@ export default function LauncherPage() {
   const [error, setError] = useState("");
   const [selectedSystem, setSelectedSystem] = useState<string | null>(null);
   const [redirecting, setRedirecting] = useState(false);
-  const [activeBU, setActiveBU] = useState("PK1");
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedFilter, setSelectedFilter] = useState<"ALL" | "LICENSED" | "PROVISIONED">("ALL");
+  const [selectedFilter, setSelectedFilter] = useState<"ALL" | AccessStatus>("ALL");
 
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
@@ -41,69 +52,9 @@ export default function LauncherPage() {
     const fetchSystems = async () => {
       try {
         const { data } = await launcherAPI.getLicensedSystems();
-        
-        // Enrich backend systems with ERP metadata & categories
-        const enriched: LicensedSystem[] = (data.systems || []).map((s: LicensedSystem) => {
-          if (s.system === "dms" || s.system.toLowerCase().includes("doc")) {
-            return {
-              ...s,
-              category: "idm",
-              code: "IDM-DOC",
-              description: "Infor Document Management with DocuSign Authorization routing",
-            };
-          }
-          if (s.system === "inventory") {
-            return {
-              ...s,
-              category: "operations",
-              code: "SCM-INV",
-              description: "Enterprise warehouse stock levels, transfers & valuation",
-            };
-          }
-          if (s.system.toLowerCase().includes("sun") || s.system.toLowerCase().includes("journal")) {
-            return {
-              ...s,
-              category: "financials",
-              code: "SUN-GL",
-              description: "SunSystems Multi-currency Ledger Posting & Account Inquiries",
-            };
-          }
-          return {
-            ...s,
-            category: "financials",
-            code: s.system.toUpperCase(),
-            description: "Financial hub service provider component",
-          };
-        });
-
-        // If SunSystems Journal Posting isn't supplied yet by backend, ensure core enterprise spokes display
-        const hasSun = enriched.some((s) => s.system.toLowerCase().includes("sun"));
-        if (!hasSun) {
-          enriched.unshift({
-            system: "sunsystems_gl",
-            display: "SunSystems Financials",
-            public_url: "#",
-            licensed: true,
-            provisioned: true,
-            category: "financials",
-            code: "SUN-FIN",
-            description: "General Ledger, Journal Posting, AP/AR Sub-ledgers & Multi-currency",
-          });
-          enriched.push({
-            system: "infor_qa",
-            display: "Infor Q&A (Vision 11)",
-            public_url: "#",
-            licensed: true,
-            provisioned: true,
-            category: "reporting",
-            code: "Q&A-XL",
-            description: "Direct SunSystems table queries, drill-downs & executive statements",
-          });
-        }
-
-        setSystems(enriched);
+        setSystems(data.systems);
       } catch (err: any) {
-        setError(err.response?.data?.detail || "Failed to load licensed enterprise systems");
+        setError(err.response?.data?.detail || "Failed to load systems");
         if (err.response?.status === 401) {
           logout();
           navigate("/login");
@@ -115,28 +66,17 @@ export default function LauncherPage() {
     fetchSystems();
   }, [navigate, logout]);
 
-  const handleSystemClick = async (systemKey: string) => {
-    if (redirecting) return;
+  const handleSystemClick = async (system: LicensedSystem) => {
+    if (redirecting || system.status !== "ready") return;
 
-    const systemData = systems.find((s) => s.system === systemKey);
-    if (!systemData) return;
-
-    if (!systemData.provisioned) {
-      setError(
-        systemData.access_message ||
-          "Your organization holds a valid license, but your user profile has not been provisioned for this spoke. Contact your SunSystems Administrator."
-      );
-      return;
-    }
-
-    setSelectedSystem(systemKey);
+    setSelectedSystem(system.system);
     setRedirecting(true);
     setError("");
 
     try {
-      const { data } = await launcherAPI.initiateSSO(systemKey);
+      const { data } = await launcherAPI.initiateSSO(system.system);
       if (!data.redirect_url) {
-        setError(data.access_message || "SSO token assertion rejected by Spoke Service Provider");
+        setError(data.access_message || "Access denied");
         setRedirecting(false);
         setSelectedSystem(null);
         return;
@@ -146,255 +86,184 @@ export default function LauncherPage() {
       setError(
         err.response?.data?.access_message ||
           err.response?.data?.detail ||
-          "Failed to establish mutual SSO handshake with spoke service"
+          "Failed to open the system"
       );
       setRedirecting(false);
       setSelectedSystem(null);
     }
   };
 
-  const filteredSystems = useMemo(() => {
-    return systems.filter((s) => {
-      const matchesSearch =
-        s.display.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (s.description && s.description.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        (s.code && s.code.toLowerCase().includes(searchQuery.toLowerCase()));
-
-      if (!matchesSearch) return false;
-      if (selectedFilter === "LICENSED") return s.licensed;
-      if (selectedFilter === "PROVISIONED") return s.provisioned;
-      return true;
-    });
-  }, [systems, searchQuery, selectedFilter]);
-
-  const renderIcon = (sys: LicensedSystem) => {
-    if (sys.system.includes("dms") || sys.category === "idm") {
-      return (
-        <div className="icon-badge idm-badge">
-          <span>✍️</span>
-        </div>
-      );
-    }
-    if (sys.system.includes("sun") || sys.code?.includes("SUN")) {
-      return (
-        <div className="icon-badge sun-badge">
-          <span>📑</span>
-        </div>
-      );
-    }
-    if (sys.category === "reporting" || sys.system.includes("qa")) {
-      return (
-        <div className="icon-badge qa-badge">
-          <span>📊</span>
-        </div>
-      );
-    }
-    return (
-      <div className="icon-badge generic-badge">
-        <span>📦</span>
-      </div>
-    );
+  const handleLogout = () => {
+    logout();
+    navigate("/login");
   };
 
+  const filteredSystems = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return systems.filter((system) => {
+      const matchesFilter = selectedFilter === "ALL" || system.status === selectedFilter;
+      const matchesQuery = !query || `${system.display} ${system.description}`.toLowerCase().includes(query);
+      return matchesFilter && matchesQuery;
+    });
+  }, [searchQuery, selectedFilter, systems]);
+
+  const readyCount = systems.filter((system) => system.status === "ready").length;
+  const unavailableCount = systems.filter((system) => system.status === "unavailable").length;
+
   return (
-    <div className="infor-shell">
-      {/* Top Navigation Bar: Infor Ming.le / Dynamics 365 style */}
-      <header className="infor-topbar">
-        <div className="topbar-left">
-          <button className="infor-waffle-btn" title="Infor OS Application Navigator">
-            <span>:::</span>
-          </button>
-          <div className="topbar-brand">
-            <span className="brand-logo-accent">◆</span>
-            <span className="brand-suite">INFOR OS</span>
-            <span className="brand-separator">/</span>
-            <span className="brand-app">FINANCIAL HUB</span>
-          </div>
-
-          <div className="topbar-bu-selector">
-            <span className="bu-label">Business Unit:</span>
-            <CustomListbox
-              value={activeBU}
-              onChange={setActiveBU}
-              options={BUSINESS_UNITS}
-              className="bu-listbox-container"
-              buttonClassName="bu-listbox-trigger"
-            />
-          </div>
-        </div>
-
-        <div className="topbar-right">
-          <div className="status-env-pill">
-            <span className="pulse-dot" />
-            <span>PRD-HOSTED</span>
-          </div>
-
-          <div className="user-profile-menu">
-            <div className="user-avatar">
-              {user?.first_name ? user.first_name[0].toUpperCase() : "U"}
+    <div className="launcher-page">
+      <header className="launcher-header">
+        <div className="header-content">
+          <div className="brand-lockup">
+            <span className="brand-mark" aria-hidden="true">F</span>
+            <div>
+              <span className="brand-eyebrow">FLAXEM PLATFORM</span>
+              <h1>Financial Systems Hub</h1>
             </div>
-            <div className="user-meta">
-              <span className="user-name">{user?.first_name} {user?.last_name || "Financial Controller"}</span>
-              <span className="user-role-badge">Super User (All Spokes)</span>
+          </div>
+          <div className="user-info">
+            <div className="user-copy">
+              <strong>{user?.first_name} {user?.last_name}</strong>
+              <span>Authenticated workspace</span>
             </div>
-            <button onClick={() => { logout(); navigate("/login"); }} className="infor-logout-btn" title="Sign Out">
-              Sign Out
-            </button>
+            <button onClick={handleLogout} className="logout-button">Sign out</button>
           </div>
         </div>
       </header>
 
-      {/* Main Workspace */}
-      <main className="infor-workspace">
-        {/* Workspace Action Subheader */}
-        <div className="workspace-subheader">
-          <div className="subheader-title-block">
-            <h1>Connected Enterprise Spoke Systems</h1>
-            <p>Unified directory of operational services, SunSystems ledger posting engines, and IDM document portals.</p>
+      <main className="launcher-main">
+        <section className="workspace-intro">
+          <div>
+            <span className="section-kicker">YOUR LICENSED PRODUCTS</span>
+            <h2>Everything your organization can access</h2>
+            <p>Launch provisioned services or see what still needs administrator attention.</p>
           </div>
-
-          <div className="subheader-controls">
-            <div className="search-box">
-              <span className="search-icon">🔍</span>
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search spoke services by name or code..."
-              />
-              {searchQuery && <button onClick={() => setSearchQuery("")} className="clear-btn">×</button>}
-            </div>
-
-            <div className="filter-pill-group">
-              <button
-                className={`filter-pill ${selectedFilter === "ALL" ? "active" : ""}`}
-                onClick={() => setSelectedFilter("ALL")}
-              >
-                All Spokes ({systems.length})
-              </button>
-              <button
-                className={`filter-pill ${selectedFilter === "PROVISIONED" ? "active" : ""}`}
-                onClick={() => setSelectedFilter("PROVISIONED")}
-              >
-                Ready / Provisioned
-              </button>
-            </div>
+          <div className="workspace-health">
+            <span className="health-dot" />
+            <span>Live access checks</span>
           </div>
-        </div>
+        </section>
 
         {error && (
-          <div className="erp-banner-alert" role="alert">
-            <span className="banner-icon">⚠</span>
-            <div className="banner-content">
-              <strong>Spoke Dispatch Warning</strong>
-              <p>{error}</p>
-            </div>
-            <button className="banner-dismiss" onClick={() => setError("")}>✕</button>
+          <div className="error-message" role="alert">
+            {error}
           </div>
         )}
 
-        {/* Spoke Systems Grid */}
-        {loading ? (
-          <div className="infor-loading-container">
-            <div className="erp-spinner" />
-            <p>Retrieving licensed enterprise services from Hub Directory...</p>
+        <section className="dashboard-summary" aria-label="License summary">
+          <div className="summary-tile">
+            <span className="summary-label">Licensed products</span>
+            <strong>{systems.length}</strong>
+            <span className="summary-note">Current organization access</span>
           </div>
-        ) : (
-          <div className="spokes-grid">
-            {filteredSystems.map((system) => {
-              const isSelected = selectedSystem === system.system;
-              const isBlocked = !system.provisioned;
+          <div className="summary-tile summary-tile-ready">
+            <span className="summary-label">Ready to launch</span>
+            <strong>{readyCount}</strong>
+            <span className="summary-note">Provisioning confirmed live</span>
+          </div>
+          <div className="summary-tile summary-tile-attention">
+            <span className="summary-label">Needs attention</span>
+            <strong>{systems.length - readyCount}</strong>
+            <span className="summary-note">Not provisioned or unavailable</span>
+          </div>
+          <div className="summary-tile">
+            <span className="summary-label">Unavailable</span>
+            <strong>{unavailableCount}</strong>
+            <span className="summary-note">Integration response required</span>
+          </div>
+        </section>
 
-              return (
-                <div
-                  key={system.system}
-                  className={`spoke-card ${isBlocked ? "blocked" : "available"} ${isSelected ? "launching" : ""}`}
-                  onClick={() => !redirecting && handleSystemClick(system.system)}
+        <section className="systems-section">
+          <div className="systems-toolbar">
+            <label className="search-box">
+              <span className="sr-only">Search licensed products</span>
+              <span aria-hidden="true">⌕</span>
+              <input
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search products"
+              />
+            </label>
+            <div className="filter-group" role="group" aria-label="Filter products">
+              {(["ALL", "ready", "not_provisioned", "unavailable"] as const).map((filter) => (
+                <button
+                  key={filter}
+                  className={selectedFilter === filter ? "filter-button active" : "filter-button"}
+                  onClick={() => setSelectedFilter(filter)}
                 >
-                  <div className="spoke-card-header">
-                    <div className="spoke-brand-wrap">
-                      {renderIcon(system)}
-                      <div>
-                        <span className="spoke-code-badge">{system.code || "SPOKE"}</span>
-                        <h3>{system.display}</h3>
-                      </div>
-                    </div>
+                  {filter === "ALL" ? "All" : STATUS_LABEL[filter]}
+                </button>
+              ))}
+            </div>
+          </div>
 
-                    <div className="spoke-status-indicator">
-                      {system.provisioned ? (
-                        <span className="badge badge-success">● Provisioned</span>
-                      ) : (
-                        <span className="badge badge-warning">◌ Access Required</span>
-                      )}
-                    </div>
-                  </div>
-
-                  <p className="spoke-desc">{system.description}</p>
-
-                  <div className="spoke-card-footer">
-                    <div className="sso-protocol-meta">
-                      <span className="protocol-chip">OIDC/SAML SSO</span>
-                      <span className="tenant-chip">BU: {activeBU}</span>
-                    </div>
-
-                    <div className="spoke-action-link">
-                      {redirecting && isSelected ? (
-                        <span className="action-launching">Initiating SSO...</span>
-                      ) : system.provisioned ? (
-                        <span className="action-ready">Launch Portal →</span>
-                      ) : (
-                        <span className="action-restricted">Request Role</span>
-                      )}
-                    </div>
-                  </div>
-
-                  {isBlocked && system.access_message && (
-                    <div className="spoke-blocked-banner">
-                      {system.access_message}
-                    </div>
-                  )}
+          {loading ? (
+            <div className="loading">Loading licensed products...</div>
+          ) : (
+            <div className="systems-grid">
+            {filteredSystems.map((system) => {
+            const ready = system.status === "ready";
+            return (
+              <div
+                key={system.system}
+                role="button"
+                tabIndex={ready ? 0 : -1}
+                aria-disabled={!ready}
+                className={`system-card status-${system.status} ${
+                  selectedSystem === system.system ? "selected" : ""
+                }`}
+                onClick={() => handleSystemClick(system)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleSystemClick(system);
+                  }
+                }}
+              >
+                <div className="system-card-topline">
+                  <div className="system-avatar" aria-hidden="true">{initials(system.display)}</div>
+                  <span className={`system-status-dot ${system.status}`} />
                 </div>
-              );
+                <span className="system-status-label">{STATUS_LABEL[system.status]}</span>
+                <h3>{system.display}</h3>
+                {system.description && (
+                  <p className="system-description">{system.description}</p>
+                )}
+                <span className={`launch-action ${ready ? "launch-action-ready" : ""}`}>
+                  {redirecting && selectedSystem === system.system ? "Opening..." : ready ? "Launch product" : "Access restricted"}
+                </span>
+                {!ready && system.access_message && (
+                  <div className="access-denied">{system.access_message}</div>
+                )}
+                {system.expires_at && (
+                  <p className="license-expiry">
+                    Licence expires{" "}
+                    {new Date(system.expires_at).toLocaleDateString()}
+                  </p>
+                )}
+                {system.info_url && (
+                  <a
+                    className="info-link"
+                    href={system.info_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    About this product
+                  </a>
+                )}
+              </div>
+            );
             })}
+            </div>
+          )}
+
+        {!loading && filteredSystems.length === 0 && !error && (
+          <div className="no-systems">
+            <strong>No products match this view.</strong>
+            <p>Try a different search or filter, or contact your administrator.</p>
           </div>
         )}
-
-        {!loading && filteredSystems.length === 0 && (
-          <div className="empty-spokes-state">
-            <div className="empty-icon">📂</div>
-            <h3>No matching enterprise services found</h3>
-            <p>No spokes match the query "{searchQuery}". Adjust filters or contact your financial system administrator.</p>
-          </div>
-        )}
-
-        {/* Quick SunSystems Journal Posting & IDM Audit Strip */}
-        <section className="infor-hub-summary-strip">
-          <div className="summary-card">
-            <h4>SunSystems Journal Status</h4>
-            <div className="summary-stat">
-              <span className="stat-number">14</span>
-              <span className="stat-desc">Batches Awaiting Post for {activeBU}</span>
-            </div>
-            <span className="stat-foot">Connected to Financial Core Engine</span>
-          </div>
-
-          <div className="summary-card">
-            <h4>IDM DocuSign Route Queue</h4>
-            <div className="summary-stat">
-              <span className="stat-number">3</span>
-              <span className="stat-desc">Purchase Requisitions Pending Signature</span>
-            </div>
-            <span className="stat-foot">Docusign API Connected & Validated</span>
-          </div>
-
-          <div className="summary-card">
-            <h4>Infor Q&A Query Cache</h4>
-            <div className="summary-stat">
-              <span className="stat-number">100%</span>
-              <span className="stat-desc">Ledger Dimensions Synced</span>
-            </div>
-            <span className="stat-foot">Realtime Financial Data Warehouse</span>
-          </div>
         </section>
       </main>
     </div>

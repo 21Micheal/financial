@@ -232,7 +232,17 @@ DMS_INTERNAL_API_BASE_URL = env(
 )
 DMS_INTERNAL_IDP_API_KEY = env("DMS_INTERNAL_IDP_API_KEY", default="")
 DMS_PUBLIC_URL = env("DMS_PUBLIC_URL", default="http://localhost:3000")
-INVENTORY_PUBLIC_URL = env("INVENTORY_PUBLIC_URL", default="http://localhost:3002")
+
+# Per-product launcher integration, keyed by Product.slug. A role_api product
+# with no entry here is reported "unavailable" (fails closed), never "ready".
+PRODUCT_INTEGRATIONS = {
+    "dms": {
+        "base_url": DMS_INTERNAL_API_BASE_URL,
+        "api_key": DMS_INTERNAL_IDP_API_KEY,
+        "public_url": DMS_PUBLIC_URL,
+        "role_field": "dms_role",
+    },
+}
 
 # Email
 EMAIL_BACKEND = env('EMAIL_BACKEND', default='django.core.mail.backends.console.EmailBackend')

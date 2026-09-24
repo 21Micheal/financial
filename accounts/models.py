@@ -9,7 +9,7 @@ from django.utils import timezone
 from django.utils.functional import cached_property
 from datetime import timedelta
 import uuid
-import random
+import secrets
 
 
 class Role(models.TextChoices):
@@ -47,6 +47,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     
     # Platform admin flags (for break-glass access)
     is_staff = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
     is_superuser = models.BooleanField(default=False)
     
     # Organization
@@ -124,7 +125,7 @@ class EmailOTP(models.Model):
     @classmethod
     def generate(cls, user):
         """Generate a new 6-digit OTP code"""
-        code = str(random.randint(100000, 999999))
+        code = f"{secrets.randbelow(10**6):06d}"
         expires_at = timezone.now() + timedelta(minutes=10)
         # Mark all existing OTPs for this user as used
         cls.objects.filter(user=user, used=False).update(used=True)

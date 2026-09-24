@@ -1,12 +1,10 @@
-from unittest.mock import patch
-
+from django.core import mail
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from accounts.models import User
+from accounts.models import EmailOTP, User
 from audit.models import AuditEvent, AuditLog
-from licensing.models import ClientOrganization, SystemLicense, SystemType
 
 
 @override_settings(FINANCIAL_INTERNAL_IDP_API_KEY="financial-test-key")
@@ -48,53 +46,59 @@ class InternalIdpApiTests(TestCase):
         self.assertEqual(ok.status_code, 200)
         self.assertTrue(ok.data["valid"])
 
+    def test_create_user_respects_enabled_flag(self):
+        response = self.client.post(
+            "/api/v1/internal/idp/users/",
+            {"email": "New@Example.com", "first_name": "New", "last_name": "User", "enabled": False},
+            format="json",
+            HTTP_AUTHORIZATION="Bearer financial-test-key",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertFalse(response.data["enabled"])
+        self.assertFalse(User.objects.get(email="new@example.com").is_active)
 
-@override_settings(
-    DMS_INTERNAL_API_BASE_URL="http://backend:8000/api/v1/internal/idp",
-    DMS_INTERNAL_IDP_API_KEY="dms-test-key",
-    DMS_PUBLIC_URL="http://localhost:3000",
-)
-class LauncherTests(TestCase):
+    def test_disabling_a_user_through_the_api_persists(self):
+        response = self.client.patch(
+            f"/api/v1/internal/idp/users/{self.user.id}/",
+            {"enabled": False},
+            format="json",
+            HTTP_AUTHORIZATION="Bearer financial-test-key",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.is_active)
+
+
+class NativeLoginTests(TestCase):
     def setUp(self):
         self.client = APIClient()
-        self.org = ClientOrganization.objects.create(
-            name="Acme",
-            code="acme",
-            contact_email="ops@acme.test",
-        )
         self.user = User.objects.create_user(
-            email="staff@acme.test",
-            password="secret-pass",
-            first_name="Staff",
-            last_name="User",
-            organization=self.org,
+            email="person@example.com", password="secret-pass",
+            first_name="Per", last_name="Son",
         )
-        SystemLicense.objects.create(organization=self.org, system=SystemType.DMS, is_active=True)
-        self.client.force_authenticate(self.user)
 
-    def test_licensed_not_provisioned_does_not_redirect(self):
-        with patch("licensing.views._dms_provisioned", return_value=False):
-            listed = self.client.get("/api/v1/launcher/systems/")
-            self.assertEqual(listed.status_code, 200)
-            card = listed.data["systems"][0]
-            self.assertTrue(card["licensed"])
-            self.assertFalse(card["provisioned"])
+    def test_login_emails_the_code_instead_of_printing_it(self):
+        response = self.client.post(
+            "/api/v1/auth/login/",
+            {"email": self.user.email, "password": "secret-pass"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        code = EmailOTP.objects.get(user=self.user).code
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, [self.user.email])
+        self.assertIn(code, mail.outbox[0].body)
 
-            denied = self.client.post("/api/v1/launcher/sso/dms/")
-            self.assertEqual(denied.status_code, 403)
-            self.assertIsNone(denied.data["redirect_url"])
-            self.assertTrue(
-                AuditLog.objects.filter(
-                    event=AuditEvent.SYSTEM_ACCESS_DENIED,
-                    actor=self.user,
-                ).exists()
-            )
-
-    def test_provisioned_returns_origin_redirect(self):
-        with patch("licensing.views._dms_provisioned", return_value=True):
-            granted = self.client.post("/api/v1/launcher/sso/dms/")
-            self.assertEqual(granted.status_code, 200)
-            self.assertEqual(granted.data["redirect_url"], "http://localhost:3000")
+    def test_deactivated_user_cannot_start_login(self):
+        self.user.is_active = False
+        self.user.save()
+        response = self.client.post(
+            "/api/v1/auth/login/",
+            {"email": self.user.email, "password": "secret-pass"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(len(mail.outbox), 0)
 
 
 class BreakGlassTests(TestCase):
@@ -124,6 +128,7 @@ class BreakGlassTests(TestCase):
         self.assertTrue(
             AuditLog.objects.filter(event=AuditEvent.USER_BREAK_GLASS_LOGIN_FAILED).exists()
         )
+        self.assertEqual(len(mail.outbox), 0)
 
     def test_staff_can_start_otp(self):
         response = self.client.post(
@@ -133,3 +138,4 @@ class BreakGlassTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertIn("user_id", response.data)
+        self.assertEqual(len(mail.outbox), 1)

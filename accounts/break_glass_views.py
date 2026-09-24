@@ -12,6 +12,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from .models import User, EmailOTP
+from .otp_delivery import deliver_otp
 from audit.models import AuditLog, AuditEvent
 
 
@@ -60,12 +61,12 @@ class BreakGlassLoginView(APIView):
                 )
             
             if check_password(password, user.password):
-                # Generate OTP
                 otp = EmailOTP.generate(user)
-                
-                # In production, send email here
-                # For now, log the OTP to console for testing
-                print(f"BREAK-GLASS OTP for {user.email}: {otp.code}")
+                if not deliver_otp(user, otp, subject="Your Financial System emergency access code"):
+                    return Response(
+                        {'detail': 'Could not send the verification code. Please try again shortly.'},
+                        status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    )
                 
                 return Response({
                     'user_id': str(user.id),

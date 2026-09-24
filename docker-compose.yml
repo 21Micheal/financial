@@ -46,7 +46,6 @@ services:
       - DMS_INTERNAL_IDP_API_KEY=${DMS_INTERNAL_IDP_API_KEY:-}
       - DMS_INTERNAL_API_BASE_URL=${DMS_INTERNAL_API_BASE_URL:-http://backend:8000/api/v1/internal/idp}
       - DMS_PUBLIC_URL=${DMS_PUBLIC_URL:-http://localhost:3000}
-      - INVENTORY_PUBLIC_URL=${INVENTORY_PUBLIC_URL:-http://localhost:3002}
       - KEYCLOAK_URL=${KEYCLOAK_URL:-http://localhost:8080}
       - KEYCLOAK_INTERNAL_URL=${KEYCLOAK_INTERNAL_URL:-http://keycloak:8080}
       - KEYCLOAK_REALM=${KEYCLOAK_REALM:-idp-dev}
