@@ -13,10 +13,9 @@ import secrets
 
 
 class Role(models.TextChoices):
-    ADMIN = "admin", "Platform Administrator"
-    FINANCE_STAFF = "finance_staff", "Finance Staff"
-    CLIENT_ADMIN = "client_admin", "Client Administrator"
-    CLIENT_USER = "client_user", "Client User"
+    PLATFORM_ADMIN = "platform_admin", "Platform Administrator"
+    ADMIN = "admin", "Administrator"
+    FINANCIAL_USER = "financial_user", "Financial User"
 
 
 class UserManager(BaseUserManager):
@@ -30,7 +29,7 @@ class UserManager(BaseUserManager):
         return user
 
     def create_superuser(self, email, password, **extra):
-        extra.setdefault("role", Role.ADMIN)
+        extra.setdefault("role", Role.PLATFORM_ADMIN)
         extra.setdefault("is_staff", True)
         extra.setdefault("is_superuser", True)
         extra.setdefault("must_change_password", False)
@@ -43,7 +42,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True)
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
-    role = models.CharField(max_length=50, choices=Role.choices, default=Role.CLIENT_USER)
+    role = models.CharField(max_length=50, choices=Role.choices, default=Role.FINANCIAL_USER)
 
     # Platform admin flags (for break-glass access)
     is_staff = models.BooleanField(default=False)
@@ -62,6 +61,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     # Password management
     must_change_password = models.BooleanField(default=True)
     password_changed_at = models.DateTimeField(null=True, blank=True)
+    has_usable_password = models.BooleanField(default=True)
 
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
@@ -89,7 +89,7 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def is_platform_admin(self):
         """Check if user is a platform administrator (for break-glass access)"""
-        return self.is_staff or self.is_superuser
+        return self.role == Role.PLATFORM_ADMIN or self.is_staff or self.is_superuser
 
     def check_password_change_required(self):
         """Check if user needs to change password"""

@@ -195,11 +195,12 @@ SIMPLE_JWT = {
     'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
 }
 
-# Auth Mode — "native" or "keycloak"
-AUTH_MODE = env("AUTH_MODE", default="native")
+# Auth Mode — now always "keycloak" (native login removed)
+AUTH_MODE = "keycloak"
 
 # Internal IDP API Key (must match FINANCIAL_INTERNAL_IDP_API_KEY in SSO/.env)
 FINANCIAL_INTERNAL_IDP_API_KEY = env("FINANCIAL_INTERNAL_IDP_API_KEY", default="")
+FINANCIAL_INTERNAL_API_BASE_URL = env("FINANCIAL_INTERNAL_API_BASE_URL", default="http://financial-backend:8001/api/v1/internal/idp")
 
 # Split-horizon Keycloak URLs. Browser sees KEYCLOAK_URL; containers use KEYCLOAK_INTERNAL_URL.
 KEYCLOAK_URL = env("KEYCLOAK_URL", default="http://localhost:8080")
