@@ -5,6 +5,8 @@ from . import break_glass_views
 urlpatterns = [
     # OIDC exchange (Keycloak mode)
     path('oidc/exchange/', views.OIDCExchangeView.as_view(), name='oidc-exchange'),
+    # OIDC back-channel logout (Keycloak single sign-out)
+    path('oidc/backchannel-logout/', views.BackchannelLogoutView.as_view(), name='oidc-backchannel-logout'),
     # Session
     path('me/', views.MeView.as_view(), name='me'),
     path('token/refresh/', views.TokenRefreshView.as_view(), name='token_refresh'),

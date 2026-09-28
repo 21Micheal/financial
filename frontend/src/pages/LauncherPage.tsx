@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../store/authStore";
-import { launcherAPI } from "../services/api";
+import { launcherAPI, authAPI } from "../services/api";
+import { oidcLogout } from "../lib/oidcClient";
 
 type AccessStatus = "ready" | "not_provisioned" | "unavailable";
 
@@ -68,7 +69,7 @@ export default function LauncherPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const navigate = useNavigate();
-  const { user, logout } = useAuthStore();
+  const { user, logout, idToken, refreshToken } = useAuthStore();
 
   useEffect(() => {
     const fetchSystems = async () => {
@@ -108,17 +109,25 @@ export default function LauncherPage() {
     } catch (err: any) {
       setError(
         err.response?.data?.access_message ||
-          err.response?.data?.detail ||
-          "Failed to initiate SSO with the selected system"
+        err.response?.data?.detail ||
+        "Failed to initiate SSO with the selected system"
       );
       setRedirecting(false);
       setSelectedSystem(null);
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // 1. Blacklist the refresh token on the backend
+    if (refreshToken) {
+      try { await authAPI.logout(refreshToken) } catch { /* ignore */ }
+    }
+    // 2. Clear local Zustand state
     logout();
-    navigate("/login");
+    // 3. End the Keycloak session — MUST be last (triggers browser redirect)
+    //    id_token_hint tells Keycloak which session to terminate and triggers
+    //    front-channel logout for all other registered clients (e.g. DMS).
+    await oidcLogout(idToken);
   };
 
   const filteredSystems = useMemo(() => {
@@ -145,12 +154,12 @@ export default function LauncherPage() {
   return (
     <div className="min-h-screen bg-[#f4f7fa] flex flex-col text-[#1c2a3a]">
       {/* ── Top Command Bar ────────────────────────────────────────────── */}
-      <header className="bg-[#182332] text-white border-b-[3px] border-[#c71f37] h-14 flex items-center justify-between px-4 sm:px-6 shadow-sm z-30 flex-shrink-0">
+      <header className="bg-[#182332] text-white border-b-[3px] border-[hsl(203_64%_42%)] h-14 flex items-center justify-between px-4 sm:px-6 shadow-sm z-30 flex-shrink-0">
         <div className="flex items-center gap-4">
           <button
             type="button"
             onClick={() => setSidebarOpen((prev) => !prev)}
-            className="p-1.5 rounded text-slate-300 hover:text-white hover:bg-[#202d3f] transition-colors focus:outline-none focus:ring-2 focus:ring-[#c71f37]"
+            className="p-1.5 rounded text-slate-300 hover:text-white hover:bg-[#202d3f] transition-colors focus:outline-none focus:ring-2 focus:ring-[hsl(203_64%_42%)]"
             title={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
             aria-label="Toggle navigation sidebar"
           >
@@ -160,11 +169,11 @@ export default function LauncherPage() {
           </button>
 
           <div className="flex items-center gap-2.5">
-            <span className="w-7 h-7 rounded bg-[#c71f37] text-white flex items-center justify-center font-bold text-sm shadow-sm">
+            <span className="w-7 h-7 rounded bg-[hsl(203_64%_42%)] text-white flex items-center justify-center font-bold text-sm shadow-sm">
               F
             </span>
             <div className="leading-tight">
-              <span className="text-[10px] font-bold tracking-wider text-rose-300 uppercase block">
+              <span className="text-[10px] font-bold tracking-wider text-[hsl(203_64%_70%)] uppercase block">
                 FLAXEM PLATFORM
               </span>
               <h1 className="text-sm font-semibold text-white tracking-wide">
@@ -201,9 +210,8 @@ export default function LauncherPage() {
       <div className="flex flex-1 overflow-hidden relative">
         {/* ── Left Navigation Sidebar ───────────────────────────────────── */}
         <aside
-          className={`bg-white border-r border-[#d4dce5] transition-all duration-300 ease-in-out flex flex-col flex-shrink-0 z-20 ${
-            sidebarOpen ? "w-72" : "w-0 -translate-x-full lg:w-16 lg:translate-x-0"
-          }`}
+          className={`bg-white border-r border-[#d4dce5] transition-all duration-300 ease-in-out flex flex-col flex-shrink-0 z-20 ${sidebarOpen ? "w-72" : "w-0 -translate-x-full lg:w-16 lg:translate-x-0"
+            }`}
         >
           {sidebarOpen ? (
             <div className="flex flex-col h-full w-72">
@@ -238,18 +246,16 @@ export default function LauncherPage() {
                       type="button"
                       disabled={!isReady || redirecting}
                       onClick={() => handleSystemClick(system)}
-                      className={`w-full text-left px-3 py-2.5 rounded-md flex items-center gap-3 transition-colors ${
-                        isSelected
-                          ? "bg-rose-50 border border-[#c71f37] text-[#182332]"
+                      className={`w-full text-left px-3 py-2.5 rounded-md flex items-center gap-3 transition-colors ${isSelected
+                          ? "bg-[hsl(203_64%_95%)] border border-[hsl(203_64%_42%)] text-[#182332]"
                           : isReady
-                          ? "hover:bg-slate-50 text-slate-700"
-                          : "opacity-60 cursor-not-allowed bg-slate-50/50 text-slate-400"
-                      }`}
+                            ? "hover:bg-slate-50 text-slate-700"
+                            : "opacity-60 cursor-not-allowed bg-slate-50/50 text-slate-400"
+                        }`}
                     >
                       <div
-                        className={`w-8 h-8 rounded flex items-center justify-center font-bold text-xs flex-shrink-0 ${
-                          isReady ? "bg-slate-100 text-slate-700" : "bg-slate-200 text-slate-400"
-                        }`}
+                        className={`w-8 h-8 rounded flex items-center justify-center font-bold text-xs flex-shrink-0 ${isReady ? "bg-slate-100 text-slate-700" : "bg-slate-200 text-slate-400"
+                          }`}
                       >
                         {getInitials(system.display)}
                       </div>
@@ -260,9 +266,8 @@ export default function LauncherPage() {
                             {system.display}
                           </span>
                           <span
-                            className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                              STATUS_CONFIG[status].dotClass
-                            }`}
+                            className={`w-2 h-2 rounded-full flex-shrink-0 ${STATUS_CONFIG[status].dotClass
+                              }`}
                           />
                         </div>
                         <span className="text-[11px] text-slate-500 block truncate">
@@ -300,9 +305,8 @@ export default function LauncherPage() {
                   >
                     {getInitials(system.display)}
                     <span
-                      className={`absolute bottom-1 right-1 w-2 h-2 rounded-full ${
-                        STATUS_CONFIG[status].dotClass
-                      }`}
+                      className={`absolute bottom-1 right-1 w-2 h-2 rounded-full ${STATUS_CONFIG[status].dotClass
+                        }`}
                     />
                   </button>
                 );
@@ -317,7 +321,7 @@ export default function LauncherPage() {
             {/* Header intro & metrics */}
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 pb-4 border-b border-[#d4dce5]">
               <div>
-                <span className="text-[11px] font-bold text-[#c71f37] tracking-wider uppercase">
+                <span className="text-[11px] font-bold text-[hsl(203_64%_42%)] tracking-wider uppercase">
                   ENTERPRISE HUBS &amp; SPOKES
                 </span>
                 <h2 className="text-2xl font-bold text-[#182332] tracking-tight">
@@ -376,7 +380,7 @@ export default function LauncherPage() {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search systems by name or keywords..."
-                  className="w-full pl-9 pr-8 py-2 text-sm bg-white border border-[#d4dce5] rounded-md focus:outline-none focus:ring-2 focus:ring-[#c71f37] focus:border-transparent text-slate-900 shadow-sm"
+                  className="w-full pl-9 pr-8 py-2 text-sm bg-white border border-[#d4dce5] rounded-md focus:outline-none focus:ring-2 focus:ring-[hsl(203_64%_42%)] focus:border-transparent text-slate-900 shadow-sm"
                 />
                 {searchQuery && (
                   <button
@@ -393,11 +397,10 @@ export default function LauncherPage() {
                   <button
                     key={filter}
                     onClick={() => setSelectedFilter(filter)}
-                    className={`px-3 py-1.5 text-xs font-semibold rounded whitespace-nowrap transition-all ${
-                      selectedFilter === filter
+                    className={`px-3 py-1.5 text-xs font-semibold rounded whitespace-nowrap transition-all ${selectedFilter === filter
                         ? "bg-white text-[#182332] shadow-sm"
                         : "text-slate-600 hover:text-slate-900"
-                    }`}
+                      }`}
                   >
                     {filter === "ALL" ? "All Systems" : STATUS_CONFIG[filter].label}
                   </button>
@@ -408,7 +411,7 @@ export default function LauncherPage() {
             {/* Systems Grid */}
             {loading ? (
               <div className="text-center py-20 bg-white border border-[#d4dce5] rounded-lg">
-                <div className="w-8 h-8 border-2 border-slate-300 border-t-[#c71f37] rounded-full animate-spin mx-auto mb-3" />
+                <div className="w-8 h-8 border-2 border-slate-300 border-t-[hsl(203_64%_42%)] rounded-full animate-spin mx-auto mb-3" />
                 <p className="text-sm text-slate-500 font-medium">
                   Loading licensed services directory...
                 </p>
@@ -424,30 +427,28 @@ export default function LauncherPage() {
                     <div
                       key={system.system}
                       onClick={() => handleSystemClick(system)}
-                      className={`group relative bg-white border rounded-lg p-5 flex flex-col justify-between transition-all shadow-sm ${
-                        isReady
-                          ? "cursor-pointer hover:border-[#c71f37] hover:shadow-md hover:-translate-y-0.5 border-[#d4dce5]"
+                      className={`group relative bg-white border rounded-lg p-5 flex flex-col justify-between transition-all shadow-sm ${isReady
+                          ? "cursor-pointer hover:border-[hsl(203_64%_42%)] hover:shadow-md hover:-translate-y-0.5 border-[#d4dce5]"
                           : "border-slate-200 bg-slate-50/60 opacity-80 cursor-not-allowed border-dashed"
-                      } ${isSelected ? "ring-2 ring-[#c71f37] border-transparent" : ""}`}
+                        } ${isSelected ? "ring-2 ring-[hsl(203_64%_42%)] border-transparent" : ""}`}
                     >
                       {/* Topline indicator */}
                       <div>
                         <div className="flex items-start justify-between gap-3 mb-3">
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-md bg-slate-100 border border-slate-200 flex items-center justify-center font-bold text-sm text-[#182332] group-hover:bg-rose-50 group-hover:border-rose-200 group-hover:text-[#c71f37] transition-colors">
+                            <div className="w-10 h-10 rounded-md bg-slate-100 border border-slate-200 flex items-center justify-center font-bold text-sm text-[#182332] group-hover:bg-[hsl(203_64%_95%)] group-hover:border-[hsl(203_64%_80%)] group-hover:text-[hsl(203_64%_42%)] transition-colors">
                               {getInitials(system.display)}
                             </div>
                             <div>
-                              <h3 className="text-base font-bold text-[#182332] group-hover:text-[#c71f37] transition-colors leading-snug">
+                              <h3 className="text-base font-bold text-[#182332] group-hover:text-[hsl(203_64%_42%)] transition-colors leading-snug">
                                 {system.display}
                               </h3>
                             </div>
                           </div>
 
                           <span
-                            className={`text-[11px] font-semibold px-2 py-0.5 rounded border inline-flex items-center gap-1.5 whitespace-nowrap ${
-                              STATUS_CONFIG[status].badgeClass
-                            }`}
+                            className={`text-[11px] font-semibold px-2 py-0.5 rounded border inline-flex items-center gap-1.5 whitespace-nowrap ${STATUS_CONFIG[status].badgeClass
+                              }`}
                           >
                             <span className={`w-1.5 h-1.5 rounded-full ${STATUS_CONFIG[status].dotClass}`} />
                             {STATUS_CONFIG[status].label}
@@ -465,7 +466,7 @@ export default function LauncherPage() {
                       <div className="pt-3 border-t border-slate-100 mt-2 flex flex-col gap-2">
                         <div className="flex items-center justify-between text-xs">
                           {isReady ? (
-                            <span className="font-semibold text-[#c71f37] group-hover:underline inline-flex items-center gap-1">
+                            <span className="font-semibold text-[hsl(203_64%_42%)] group-hover:underline inline-flex items-center gap-1">
                               {redirecting && isSelected ? "Connecting SSO..." : "Open System →"}
                             </span>
                           ) : (

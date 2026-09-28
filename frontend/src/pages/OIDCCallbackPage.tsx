@@ -7,7 +7,7 @@ import { useAuthStore } from "../store/authStore";
 export default function OIDCCallbackPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { setTokens, setUser } = useAuthStore();
+  const { setTokens, setUser, setIdToken } = useAuthStore();
   const processed = useRef(false);
   const [statusMessage, setStatusMessage] = useState("Validating OIDC security token...");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -32,6 +32,9 @@ export default function OIDCCallbackPage() {
 
         setStatusMessage("Authenticating user session with Financial Hub Core...");
         const { data } = await authAPI.exchangeOidc(oidcUser.id_token);
+
+        // Store id_token for use as id_token_hint on logout (enables proper KC SLO)
+        setIdToken(oidcUser.id_token);
         setTokens(data.access, data.refresh);
         setUser(data.user);
 
@@ -46,7 +49,7 @@ export default function OIDCCallbackPage() {
         );
       }
     })();
-  }, [location.search, navigate, setTokens, setUser]);
+  }, [location.search, navigate, setTokens, setUser, setIdToken]);
 
   return (
     <div className="min-h-screen bg-[#f4f7fa] flex items-center justify-center p-6 text-[#1c2a3a]">

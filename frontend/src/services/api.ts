@@ -2,11 +2,9 @@
  * api.ts — Axios client for the Financial System backend.
  *
  * fix #7A: 401 response interceptor attempts one token refresh before logging out.
- * fix #7C: Calls oidcLogout() before clearing Zustand on final session failure.
  */
 import axios from 'axios'
 import { useAuthStore } from '../store/authStore'
-import { oidcLogout } from '../lib/oidcClient'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1'
 
@@ -74,8 +72,9 @@ apiClient.interceptors.response.use(
       original.headers.Authorization = `Bearer ${data.access}`
       return apiClient(original)
     } catch {
-      // Refresh failed — end session (fix #7C: also end Keycloak session)
-      oidcLogout().catch(() => {})
+      // Refresh failed — clear local state and let RequireAuth redirect to /login.
+      // Do NOT call oidcLogout() here: signoutRedirect() would navigate the
+      // browser mid-request, breaking the current page and causing loops.
       logout()
       return Promise.reject(error)
     } finally {

@@ -226,3 +226,9 @@ For issues or questions:
 - Platform operations team
 - Review audit logs for troubleshooting
 - Check Keycloak admin console for federation status
+
+
+
+
+
+Note on Keycloak configuration: For monitorSession to detect cross-client logouts, the Keycloak realm needs the "Session" tab → check_session_iframe_supported enabled (it is by default in Keycloak 18+). No extra admin console changes are required. The id_token_hint on signoutRedirect triggers front-channel logout to other clients if you later register front-channel logout URLs in Keycloak admin — optional but adds an extra guarantee layer.

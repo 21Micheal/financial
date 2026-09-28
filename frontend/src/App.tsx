@@ -6,6 +6,7 @@ import OIDCCallbackPage from './pages/OIDCCallbackPage'
 import BreakGlassRedeemPage from './pages/BreakGlassRedeemPage'
 import ChangePasswordPage from './pages/ChangePasswordPage'
 import { AuthBootstrap } from './components/AuthBootstrap'
+import { useEffect } from 'react'
 import type { ReactNode } from 'react'
 
 /** fix #10F: gate every protected route — redirects to /login when unauthenticated */
@@ -26,10 +27,25 @@ function RequireAuth({ children }: { children: ReactNode }) {
   return <>{children}</>
 }
 
+/** Redirect authenticated users away from login page */
+function LoginRedirect() {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  const location = useLocation()
+
+  useEffect(() => {
+    if (isAuthenticated && location.pathname === '/login') {
+      window.location.href = '/launcher'
+    }
+  }, [isAuthenticated, location.pathname])
+
+  return null
+}
+
 function App() {
   return (
     <BrowserRouter>
       <AuthBootstrap>
+        <LoginRedirect />
         <Routes>
           {/* Public */}
           <Route path="/login"         element={<LoginPage />} />
